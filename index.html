@@ -1,0 +1,1876 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
+<title>Aplikasi OTS & LPA</title>
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="OTS & LPA" />
+<link rel="apple-touch-icon" href="https://lh3.googleusercontent.com/d/1y2UjnKau1siZO4lN_BDN4ttrIYeFqpCQ" />
+<link rel="icon" href="https://lh3.googleusercontent.com/d/1y2UjnKau1siZO4lN_BDN4ttrIYeFqpCQ" />
+
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#059669" />
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+html, body { 
+    font-family: 'Inter', sans-serif; 
+    background-color: var(--color-bg, #F8FAFC); 
+    color: #1a1c1e; 
+    touch-action: manipulation; 
+}
+.sig-canvas { border: 1px dashed #cbd5e1; border-radius: 0.25rem; background-color: #ffffff; touch-action: none; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+@media screen and (max-width: 768px) {
+    input, select, textarea, button {
+        font-size: 16px !important;
+    }
+}
+
+.leaflet-control-attribution { display: none !important; }
+</style>
+<script>
+tailwind.config = {
+theme: { extend: { colors: { primary: 'var(--color-primary, #059669)', secondary: '#E8F5E9', neutral: '#1a1c1e' }, fontFamily: { sans: ['Inter', 'sans-serif'] } } }
+}
+</script>
+
+<script>
+if (typeof google === 'undefined') {
+    // KELAK JIKA BACKEND GAS SUDAH DEPLOY, GANTI URL DI BAWAH INI
+    const GAS_WEB_APP_URL = "SALIN_URL_WEB_APP_GAS_ANDA_DISINI";
+    
+    const createRunner = (successCb, failureCb) => {
+        return {
+            _success: successCb,
+            _failure: failureCb,
+            withSuccessHandler: function(cb) { return createRunner(cb, this._failure); },
+            withFailureHandler: function(cb) { return createRunner(this._success, cb); },
+            _call: function(name, args) {
+                if (GAS_WEB_APP_URL === "SALIN_URL_WEB_APP_GAS_ANDA_DISINI") {
+                    console.log(`[Mode Lokal Vercel] Bypass Fungsi: ${name}`);
+                    // Fallback simulasi agar UI tidak loading terus saat di Vercel pertama kali
+                    setTimeout(() => { if (this._success) this._success(); }, 500);
+                    return; 
+                }
+                
+                fetch(GAS_WEB_APP_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: name, args: args })
+                })
+                .then(response => response.json())
+                .then(res => { if (this._success) this._success(res); })
+                .catch(err => { if (this._failure) this._failure(err); else console.error(err); });
+            },
+            getDataById: function(type, id) { this._call('getDataById', [type, id]); },
+            generateReport: function(p, f) { this._call('generateReport', [p, f]); },
+            deleteSubmission: function(p) { this._call('deleteSubmission', [p]); },
+            processSubmission: function(p) { this._call('processSubmission', [p]); },
+            saveSettings: function(s) { this._call('saveSettings', [s]); },
+            getSettings: function() { this._call('getSettings', []); },
+            getHistory: function() { this._call('getHistory', []); },
+            getDropdownData: function() { this._call('getDropdownData', []); }
+        };
+    };
+    window.google = { script: { run: createRunner(null, null) } };
+}
+</script>
+
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, Fragment, useMemo } = React;
+
+const safeStorage = {
+get: (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch(e) { return null; } },
+set: (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {} },
+remove: (key) => { try { localStorage.removeItem(key); } catch(e) {} }
+};
+
+const IDB = {
+saveDraft: async (draft) => {
+let drafts = safeStorage.get('ots_drafts') || [];
+drafts = drafts.filter(d => d.id !== draft.id);
+drafts.push(draft);
+safeStorage.set('ots_drafts', drafts);
+},
+getDrafts: async () => safeStorage.get('ots_drafts') || [],
+deleteDraft: async (id) => {
+let drafts = safeStorage.get('ots_drafts') || [];
+safeStorage.set('ots_drafts', drafts.filter(d => d.id !== id));
+},
+setAutoSave: async (formType, data) => {
+safeStorage.set(`autosave_${formType}`, { data, updated: Date.now() });
+},
+getAutoSave: async (formType) => {
+const item = safeStorage.get(`autosave_${formType}`);
+return item ? item.data : null;
+},
+clearAutoSave: async (formType) => {
+safeStorage.remove(`autosave_${formType}`);
+},
+saveGeneratedDoc: (id, formType, url, format) => {
+let docs = safeStorage.get('generated_docs') || [];
+docs = docs.filter(d => !(d.id === id && d.format === format)); 
+docs.push({ id, formType, url, format, date: new Date().toLocaleString('id-ID') });
+safeStorage.set('generated_docs', docs);
+},
+getGeneratedDocs: () => safeStorage.get('generated_docs') || [],
+};
+
+const Icon = ({ name, size = 18, className = "" }) => {
+const ref = useRef(null);
+useEffect(() => {
+if (!ref.current || !window.lucide) return;
+ref.current.innerHTML = "";
+
+const iconMapping = {
+    'file-type-pdf': 'file-text', 'file-type-doc': 'file-text', 'file-spreadsheet': 'file-text',
+    'pen-tool': 'pen', 'pen-line': 'edit', 'store': 'shopping-bag', 'briefcase': 'briefcase',
+    'shield': 'shield', 'printer': 'printer', 'share-2': 'share-2', 'trash-2': 'trash-2',
+    'list-ordered': 'list', 'check-square': 'check-circle', 'home': 'home', 'calendar': 'calendar'
+};
+const targetName = iconMapping[name] || name;
+const toPascalCase = (str) => str.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('');
+const pascalName = toPascalCase(targetName);
+let iconData = window.lucide.icons?.[pascalName] || window.lucide.icons?.['Circle'];
+
+if (!iconData) return;
+const svg = window.lucide.createElement(iconData);
+svg.setAttribute("width", size);
+svg.setAttribute("height", size);
+if (className) svg.setAttribute("class", className);
+ref.current.appendChild(svg);
+}, [name, size, className]);
+return <span ref={ref} className="inline-flex items-center justify-center shrink-0"></span>;
+};
+
+const CustomImage = ({ src, fallbackIcon, size = 20, className = "" }) => {
+if (src) return <div style={{width: size, height: size}} className={`flex justify-center items-center overflow-hidden ${className}`}><img src={src} className="w-full h-full object-contain" alt="icon" /></div>;
+return <Icon name={fallbackIcon} size={size} className={className} />;
+};
+
+const compressImage = (file, callback, maxWidth = 500) => {
+if (!file) return;
+const reader = new FileReader();
+reader.readAsDataURL(file);
+reader.onload = e => {
+const img = new Image(); img.src = e.target.result;
+img.onload = () => {
+const canvas = document.createElement('canvas'); 
+let w = img.width, h = img.height;
+if (w > h) { if (w > maxWidth) { h *= maxWidth / w; w = maxWidth; } } else { if (h > maxWidth) { w *= maxWidth / h; h = maxWidth; } }
+canvas.width = w; canvas.height = h;
+canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+callback(canvas.toDataURL('image/jpeg', maxWidth > 800 ? 0.75 : 0.5));
+};
+};
+};
+
+const getFieldIcon = (name) => {
+    const n = name.toLowerCase();
+    if (n.includes('id') || n.includes('no_lpa') || n.includes('no_surat')) return 'hash';
+    if (n.includes('nama') || n.includes('pemilik') || n.includes('narasumber') || n.includes('petugas') || n.includes('atasan') || n.includes('pejabat')) return 'user';
+    if (n.includes('tanggal') || n.includes('tgl') || n.includes('order')) return 'calendar';
+    if (n.includes('waktu') || n.includes('jam') || n.includes('lama_') || n.includes('masa_kerja')) return 'clock';
+    if (n.includes('telepon') || n.includes('telp')) return 'phone';
+    if (n.includes('alamat') || n.includes('lokasi') || n.includes('perumahan')) return 'map-pin';
+    if (n.includes('perusahaan') || n.includes('usaha')) return 'briefcase';
+    if (n.includes('gaji') || n.includes('biaya') || n.includes('penghasilan') || n.includes('angsuran') || n.includes('pinjaman') || n.includes('transfer') || n.includes('tunai') || n.includes('rata')) return 'coins';
+    if (n.includes('foto') || n.includes('selfie') || n.includes('kwh') || n.includes('kamar_mandi') || n.includes('ruangan')) return 'camera';
+    if (n.includes('tanda_tangan')) return 'pen-tool';
+    if (n.includes('catatan') || n.includes('blok') || n.includes('unit') || n.includes('spek_') || n.includes('saluran') || n.includes('listrik')) return 'file-text';
+    if (n.includes('jumlah') || n.includes('usia') || n.includes('persentase')) return 'bar-chart-2';
+    if (n.includes('jabatan') || n.includes('status') || n.includes('validasi') || n.includes('bentuk') || n.includes('bidang') || n.includes('tipe') || n.includes('pembayaran') || n.includes('bank') || n.includes('layak_huni') || n.includes('kondisi') || n.includes('tingkat') || n.includes('kemampuan') || n.includes('prospek') || n.includes('objek')) return 'check-square';
+    return 'edit-3';
+};
+
+const InputWrapper = ({ label, icon, required, isFilled, isReadOnly, hidden, children }) => {
+    if (hidden) return null; 
+    
+    let borderColor = required ? 'border-orange-300 bg-orange-50/10 hover:bg-orange-50/30' : 'border-primary/40 bg-white hover:bg-green-50/5';
+    if (isFilled) borderColor = 'border-primary/60 bg-green-50/20';
+    if (isReadOnly) borderColor = 'bg-gray-50 border-gray-200 opacity-80 cursor-not-allowed';
+    
+    const iconColor = isFilled ? 'text-primary' : (required ? 'text-orange-400' : 'text-primary/50');
+    
+    return (
+        <div className={`relative border rounded flex items-center px-3 py-1 shadow-sm transition-all duration-200 mb-3 focus-within:border-primary focus-within:bg-green-50/10 focus-within:ring-1 focus-within:ring-primary ${borderColor}`}>
+            <Icon name={icon} size={16} className={`mr-2.5 shrink-0 transition-colors ${iconColor}`} />
+            <div className="flex-1 min-w-0 flex flex-col justify-center py-1.5">
+                <label className="text-[10px] font-semibold text-gray-500 tracking-wide mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
+                    {label} {required && <span className="text-red-500">*</span>}
+                </label>
+                <div className="text-[13px] font-medium text-neutral w-full">
+                    {children}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const FullScreenLoader = ({ text }) => (
+    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm touch-none">
+        <div className="bg-white p-6 rounded-xl shadow-2xl flex flex-col items-center max-w-[80%] text-center border-b-4 border-primary">
+            <Icon name="loader" size={32} className="animate-spin text-primary mb-3" />
+            <p className="text-[12px] font-bold text-neutral leading-relaxed">{text}</p>
+        </div>
+    </div>
+);
+
+const MapComponent = ({ historyData }) => {
+    useEffect(() => {
+        if (!window.L) return;
+        const mapId = 'coverage-map';
+        const container = L.DomUtil.get(mapId);
+        if (container != null) container._leaflet_id = null;
+        
+        const map = L.map(mapId, { zoomControl: false }).setView([3.5952, 98.6722], 11);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(map);
+
+        const bounds = [];
+        historyData.forEach(h => {
+            const match = h.lokasi && typeof h.lokasi === 'string' ? h.lokasi.match(/Lat:\s*([-\d.]+),\s*Lng:\s*([-\d.]+)/) || h.lokasi.match(/q=([-\d.]+),([-\d.]+)/) : null;
+            if (match) {
+                const latlng = [parseFloat(match[1]), parseFloat(match[2])];
+                L.circleMarker(latlng, {
+                    radius: 6, fillColor: "var(--color-primary, #059669)", color: "#ffffff", weight: 1.5, opacity: 1, fillOpacity: 0.8
+                }).addTo(map).bindPopup(`<div style="font-family:'Inter'; text-align:center;"><b style="font-size:12px; color:var(--color-primary, #059669);">${h.name}</b><br/><span style="font-size:10px; color:#666;">${h.type}</span></div>`);
+                bounds.push(latlng);
+            }
+        });
+        
+        if(bounds.length > 0) {
+            map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
+        }
+        
+        return () => map.remove();
+    }, [historyData]);
+    return <div id="coverage-map" className="w-full h-56 rounded-xl border-2 border-white shadow-sm z-0"></div>;
+}
+
+const FilterBar = ({ onFilterChange, showCategoryFilter = false }) => {
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const years = ['2023', '2024', '2025', '2026', '2027', '2028', '2029', '2030'];
+    
+    return (
+        <div className="flex flex-col gap-2.5 mb-4 bg-white p-3.5 rounded-xl shadow-sm border border-gray-100">
+           <div className="relative border border-gray-300 rounded px-3 py-2 flex items-center focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-colors bg-[#FAFAFA] focus-within:bg-white">
+              <Icon name="search" size={16} className="text-gray-400 mr-2 shrink-0" />
+              <input type="text" placeholder="Cari Nama / No Berkas / Petugas..." className="w-full text-[13px] outline-none bg-transparent font-medium" onChange={e => onFilterChange('search', e.target.value)} />
+           </div>
+           {showCategoryFilter && (
+               <div className="relative border border-gray-300 rounded bg-[#FAFAFA]">
+                <select className="w-full text-[12px] font-bold text-gray-600 bg-transparent p-2.5 outline-none appearance-none cursor-pointer" onChange={e => onFilterChange('category', e.target.value)}>
+                    <option value="">Semua Kategori Form</option>
+                    <option value="OTS Karyawan">OTS Karyawan</option>
+                    <option value="OTS Usaha">OTS Usaha</option>
+                    <option value="LPA">LPA Agunan</option>
+                </select>
+                <Icon name="chevron-down" size={14} className="absolute right-2.5 top-2.5 pointer-events-none text-gray-400" />
+              </div>
+           )}
+           <div className="flex gap-2">
+              <div className="flex-1 relative border border-gray-300 rounded bg-[#FAFAFA]">
+                <select className="w-full text-[12px] font-bold text-gray-600 bg-transparent p-2.5 outline-none appearance-none cursor-pointer" onChange={e => onFilterChange('month', e.target.value)}>
+                    <option value="">Semua Bulan</option>
+                    {months.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <Icon name="chevron-down" size={14} className="absolute right-2.5 top-2.5 pointer-events-none text-gray-400" />
+              </div>
+              <div className="flex-1 relative border border-gray-300 rounded bg-[#FAFAFA]">
+                <select className="w-full text-[12px] font-bold text-gray-600 bg-transparent p-2.5 outline-none appearance-none cursor-pointer" onChange={e => onFilterChange('year', e.target.value)}>
+                    <option value="">Semua Tahun</option>
+                    {years.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <Icon name="chevron-down" size={14} className="absolute right-2.5 top-2.5 pointer-events-none text-gray-400" />
+              </div>
+           </div>
+        </div>
+    )
+}
+
+const formsConfig = {
+'OTS Karyawan': [
+{ section: 'I. Data Observasi', fields: [
+{ name: 'Observasi_ID', label: 'Observasi ID (Auto)', type: 'text', readOnly: true, hidden: true },
+{ name: 'Nama_Nasabah', label: 'Nama Nasabah', type: 'text', required: true },
+{ name: 'Tanggal_Observasi', label: 'Tanggal Observasi', type: 'date', required: true },
+{ name: 'Waktu_Observasi', label: 'Waktu Observasi', type: 'time', required: true }
+]},
+{ section: 'II. Data Perusahaan', fields: [
+{ name: 'Nama_Perusahaan', label: 'Nama Perusahaan', type: 'text', required: true },
+{ name: 'No_Telepon_Perusahaan', label: 'No Telepon Perusahaan', type: 'tel' },
+{ name: 'Alamat_Perusahaan', label: 'Alamat Perusahaan', type: 'address', required: true },
+{ name: 'Nama_Pemilik_Perusahaan', label: 'Nama Pemilik Perusahaan', type: 'text' },
+{ name: 'Bentuk_Badan_Usaha', label: 'Bentuk Badan Usaha', type: 'select', dropdownKey: 'Bentuk_Badan_Usaha', required: true },
+{ name: 'Bidang_Usaha', label: 'Bidang Usaha', type: 'text' },
+{ name: 'Lama_Perusahaan_Berdiri', label: 'Lama Perusahaan Berdiri (Thn)', type: 'number' },
+{ name: 'Jumlah_Pegawai', label: 'Jumlah Pegawai', type: 'number' },
+{ name: 'Jumlah_Cabang', label: 'Jumlah Cabang', type: 'number' },
+{ name: 'Waktu_Operasional_Usaha', label: 'Waktu Operasional Usaha', type: 'text' },
+{ name: 'Papan_Nama', label: 'Papan Nama', type: 'select', dropdownKey: 'Papan_Nama' },
+]},
+{ section: 'III. Narasumber & Pegawai', fields: [
+{ name: 'Narasumber_Utama', label: 'Narasumber Utama', type: 'text', required: true },
+{ name: 'Jabatan_Narsum', label: 'Jabatan Narsum', type: 'text', required: true },
+{ name: 'Narasumber_Tambahan', label: 'Narasumber Tambahan', type: 'text' },
+{ name: 'Jabatan_Nartam', label: 'Jabatan Nartam', type: 'text' },
+{ name: 'Status_Pegawai', label: 'Status Pegawai', type: 'select', dropdownKey: 'Status_Pegawai', required: true },
+{ name: 'Masa_Kerja_Nasabah', label: 'Masa Kerja Nasabah (Thn)', type: 'number', required: true },
+{ name: 'Jabatan_Nasabah', label: 'Jabatan Nasabah', type: 'text', required: true },
+{ name: 'Usia_Pensiun', label: 'Usia Pensiun', type: 'number' },
+]},
+{ section: 'IV. Finansial & Pinjaman', fields: [
+{ name: 'Gaji_Pokok', label: 'Gaji Pokok', type: 'number', required: true },
+{ name: 'Tunjangan_Tetap', label: 'Tunjangan Tetap', type: 'number' },
+{ name: 'Tunjangan_Tdk_Tetap', label: 'Tunjangan Tdk Tetap', type: 'number' },
+{ name: 'Penghasilan_Lainnya', label: 'Penghasilan Lainnya', type: 'number' },
+{ name: 'Total_Gaji_Nasabah', label: 'Total Gaji Nasabah (Auto)', type: 'number', readOnly: true },
+{ name: 'Pembayaran_Gaji', label: 'Pembayaran Gaji', type: 'select', dropdownKey: 'Pembayaran_Gaji', required: true },
+{ name: 'Bank_Penggajian', label: 'Bank Penggajian', type: 'text' },
+{ name: 'Tanggal_Gaji', label: 'Tanggal Gaji (Tgl)', type: 'number' },
+{ name: 'Persentase_Transfer', label: 'Persentase Transfer (%)', type: 'number' },
+{ name: 'Persentase_Tunai', label: 'Persentase Tunai (%)', type: 'number', readOnly: true },
+{ name: 'Instansi_Pemberi_Pembiayaan', label: 'Instansi Pemberi Pembiayaan', type: 'text', required: true },
+{ name: 'Total_Pinjaman_Lain_Nasabah', label: 'Total Pinjaman Lain Nasabah', type: 'number', required: true },
+{ name: 'Jangka_Waktu_Pinjaman', label: 'Jangka Waktu Pinjaman (Bln)', type: 'number', required: true },
+{ name: 'Jumlah_Angsuran_Lain', label: 'Jumlah Angsuran Lain', type: 'number' },
+]},
+{ section: 'V. Validasi', fields: [
+{ name: 'Validasi_Pekerjaan_Nasabah', label: 'Validasi Pekerjaan Nasabah', type: 'select', dropdownKey: 'Validasi_Pekerjaan_Nasabah', required: true },
+{ name: 'Jabatan_Nasabah_Validasi', label: 'Jabatan Nasabah Validasi', type: 'text' },
+{ name: 'Catatan_Tambahan', label: 'Catatan Tambahan', type: 'textarea' },
+]},
+{ section: 'VI. Dokumentasi Foto', fields: [
+{ name: 'Foto_Depan_Kantor', label: 'Foto Depan Kantor', type: 'photo', required: true },
+{ name: 'Selfie_Depan_Kantor', label: 'Selfie Depan Kantor', type: 'photo', required: true },
+{ name: 'Foto_Dalam_Kantor', label: 'Foto Dalam Kantor', type: 'photo' },
+{ name: 'Foto_Petugas_dan_Narsum', label: 'Foto Petugas dan Narsum', type: 'photo' },
+{ name: 'Foto_Lingkungan', label: 'Foto Lingkungan', type: 'photo' },
+{ name: 'Foto_Perusahaan', label: 'Foto Perusahaan', type: 'photo' },
+]},
+{ section: 'VII. Tanda Tangan & Pengesahan', fields: [
+{ name: 'Tanda_Tangan_Narsum_1', label: 'Tanda_Tangan_Narsum_1', type: 'signature', required: true },
+{ name: 'Tanda_Tangan_Narsum_2', label: 'Tanda_Tangan_Narsum_2', type: 'signature' },
+{ name: 'Nama_Petugas', label: 'Nama Petugas', type: 'text', required: true },
+{ name: 'Jabatan_Petugas', label: 'Jabatan Petugas', type: 'text' },
+{ name: 'Tanda_Tangan_Petugas', label: 'Tanda Tangan Petugas', type: 'signature', required: true },
+{ name: 'Nama_Atasan_1', label: 'Nama Atasan 1', type: 'text' },
+{ name: 'Jabatan_Atasan_1', label: 'Jabatan Atasan 1', type: 'select', dropdownKey: 'Jabatan_Atasan_1' },
+{ name: 'Tanda_Tangan_Atasan', label: 'Tanda Tangan Atasan', type: 'signature' },
+{ name: 'Nama_Atasan_2', label: 'Nama Atasan 2', type: 'text' },
+{ name: 'Jabatan_Atasan_2', label: 'Jabatan Atasan 2', type: 'select', dropdownKey: 'Jabatan_Atasan_2' },
+]}
+],
+'OTS Usaha': [
+{ section: 'I. Data Nasabah & Usaha', fields: [
+{ name: 'Observasi_ID', label: 'Observasi ID (Auto)', type: 'text', readOnly: true, hidden: true },
+{ name: 'Nama_Nasabah', label: 'Nama Nasabah', type: 'text', required: true },
+{ name: 'Tanggal_Observasi', label: 'Tanggal Observasi', type: 'date', required: true },
+{ name: 'Waktu_Observasi', label: 'Waktu Observasi', type: 'time', required: true },
+{ name: 'No_Telp_Nasabah', label: 'No Telp Nasabah', type: 'tel' },
+{ name: 'Narasumber_Utama', label: 'Narasumber Utama', type: 'text', required: true },
+{ name: 'Jabatan_Narsum', label: 'Jabatan Narsum', type: 'text', required: true },
+{ name: 'Narasumber_Tambahan', label: 'Narasumber Tambahan', type: 'text' },
+{ name: 'Hubungan_Dengan_Nasabah', label: 'Hubungan Dengan Nasabah', type: 'text' },
+]},
+{ section: 'II. Profil Usaha', fields: [
+{ name: 'Nama_Tempat_Usaha', label: 'Nama Tempat Usaha', type: 'text', required: true },
+{ name: 'Alamat_Tempat_Usaha', label: 'Alamat Tempat Usaha', type: 'address', required: true },
+{ name: 'No_Telp', label: 'No Telp', type: 'tel' },
+{ name: 'Bentuk_Badan_Usaha', label: 'Bentuk Badan Usaha', type: 'select', dropdownKey: 'Bentuk_Badan_Usaha', required: true },
+{ name: 'Bidang_Usaha_Nasabah', label: 'Bidang Usaha Nasabah', type: 'text', required: true },
+{ name: 'Konsumen_Target_Pasar', label: 'Konsumen Target Pasar', type: 'text' },
+{ name: 'Daftar_Supplier', label: 'Daftar Supplier', type: 'textarea' },
+{ name: 'Lama_Usaha', label: 'Lama Usaha (Thn)', type: 'number' },
+{ name: 'Status_Tempat_Usaha', label: 'Status Tempat Usaha', type: 'select', dropdownKey: 'Status_Tempat_Usaha' },
+{ name: 'Jumlah_Pegawai', label: 'Jumlah Pegawai', type: 'number' },
+{ name: 'Hari_Kerja_Per_Minggu', label: 'Hari Kerja Per Minggu', type: 'number' },
+{ name: 'Total_Jam_Kerja_Harian', label: 'Total Jam Kerja Harian', type: 'number' },
+{ name: 'Mulai_Jam', label: 'Mulai Jam', type: 'time' },
+{ name: 'Selesai_Jam', label: 'Selesai Jam', type: 'time' },
+]},
+{ section: 'III. Finansial', fields: [
+{ name: 'Rata-Rata_Penj_Kotor_Harian', label: 'Rata-Rata Penj Kotor Harian', type: 'number', required: true },
+{ name: 'Rata-Rata_Penj_Kotor_Bulanan', label: 'Rata-Rata Penj Kotor Bulanan', type: 'number' },
+{ name: 'Biaya_Ops_Harian', label: 'Biaya Ops Harian', type: 'number', required: true },
+{ name: 'Biaya_Ops_Bulanan', label: 'Biaya Ops Bulanan', type: 'number' },
+{ name: 'Biaya_Sewa_Harian', label: 'Biaya Sewa Harian', type: 'number' },
+{ name: 'Biaya_Sewa_Bulanan', label: 'Biaya Sewa Bulanan', type: 'number' },
+{ name: 'Biaya_Gaji_Pegawai', label: 'Biaya Gaji Pegawai Total / Bln', type: 'number' },
+{ name: 'Biaya_Lainnya', label: 'Biaya Lainnya / Bln', type: 'number' },
+]},
+{ section: 'IV. Analisa Pasar', fields: [
+{ name: 'Kondisi_Aktifitas_Usaha', label: 'Kondisi Aktivitas Usaha', type: 'select', dropdownKey: 'Kondisi_Aktifitas_Usaha' },
+{ name: 'Tingkat_Persaingan', label: 'Tingkat Persaingan', type: 'select', dropdownKey: 'Tingkat_Persaingan' },
+{ name: 'Lokasi_Usaha', label: 'Lokasi Usaha', type: 'select', dropdownKey: 'Lokasi_Usaha' },
+{ name: 'Kemampuan_Usaha', label: 'Kemampuan Usaha', type: 'select', dropdownKey: 'Kemampuan_Usaha' },
+{ name: 'Prospek_Usaha', label: 'Prospek Usaha', type: 'select', dropdownKey: 'Prospek_Usaha' },
+]},
+{ section: 'V. Validasi', fields: [
+{ name: 'Validasi_Usaha_Nasabah', label: 'Validasi Usaha Nasabah', type: 'select', dropdownKey: 'Validasi_Usaha_Nasabah', required: true },
+{ name: 'Catatan_Lainnya', label: 'Catatan Lainnya', type: 'textarea' },
+{ name: 'Catatan_Khusus', label: 'Catatan Khusus', type: 'textarea' },
+]},
+{ section: 'VI. Dokumentasi Foto', fields: [
+{ name: 'Foto_Usaha', label: 'Foto Usaha', type: 'photo', required: true },
+{ name: 'Selfie_Petugas', label: 'Selfie Petugas', type: 'photo', required: true },
+{ name: 'Foto_Kondisi_Sekitar', label: 'Foto Kondisi Sekitar', type: 'photo' },
+{ name: 'Foto_Lokasi_Usaha_Nasabah', label: 'Foto Lokasi Usaha Nasabah', type: 'photo' },
+]},
+{ section: 'VII. Tanda Tangan & Pengesahan', fields: [
+{ name: 'Tanda_Tangan_Narsum_1', label: 'Tanda_Tangan_Narsum_1', type: 'signature', required: true },
+{ name: 'Tanda_Tangan_Narsum_2', label: 'Tanda_Tangan_Narsum_2', type: 'signature' },
+{ name: 'Nama_Petugas', label: 'Nama Petugas', type: 'text', required: true },
+{ name: 'Jabatan_Petugas', label: 'Jabatan Petugas', type: 'text' },
+{ name: 'Tanda_Tangan_Petugas', label: 'Tanda Tangan Petugas', type: 'signature', required: true },
+{ name: 'Nama_Atasan_1', label: 'Nama Atasan 1', type: 'text' },
+{ name: 'Jabatan_Atasan_1', label: 'Jabatan Atasan 1', type: 'select', dropdownKey: 'Jabatan_Atasan_1' },
+{ name: 'Tanda_Tangan_Atasan', label: 'Tanda Tangan Atasan', type: 'signature' },
+{ name: 'Nama_Atasan_2', label: 'Nama Atasan 2', type: 'text' },
+{ name: 'Jabatan_Atasan_2', label: 'Jabatan Atasan 2', type: 'select', dropdownKey: 'Jabatan_Atasan_2' },
+]}
+],
+'LPA': [
+{ section: 'I. Data Agunan', fields: [
+{ name: 'LPA_ID', label: 'LPA ID', type: 'text', readOnly: true, hidden: true },
+{ name: 'No_LPA', label: 'No LPA', type: 'text', required: true },
+{ name: 'Nama_Perumahan', label: 'Nama Perumahan', type: 'text', required: true },
+{ name: 'Alamat_Perumahan', label: 'Alamat Perumahan', type: 'address', required: true },
+{ name: 'Blok', label: 'Blok', type: 'text' },
+{ name: 'No_Unit', label: 'No Unit', type: 'text' },
+{ name: 'Tipe_Produk', label: 'Tipe Produk', type: 'select', dropdownKey: 'Tipe_Produk', required: true },
+{ name: 'Tanggal_Order', label: 'Tanggal Order', type: 'date' },
+{ name: 'Tanggal_Survey', label: 'Tanggal Survey', type: 'date', required: true },
+{ name: 'No_Surat_Penugasan', label: 'No Surat Penugasan', type: 'text' },
+{ name: 'Tgl_Surat_Penugasan', label: 'Tgl Surat Penugasan', type: 'date' },
+{ name: 'Objek_Agunan', label: 'Objek Agunan', type: 'select', dropdownKey: 'Objek_Agunan', required: true },
+{ name: 'Nama_Nasabah', label: 'Nama Nasabah', type: 'text', required: true },
+]},
+{ section: 'II. Dokumentasi Foto', fields: [
+{ name: 'Foto_Tampak_Depan', label: 'Foto Tampak Depan', type: 'photo', required: true },
+{ name: 'Selfie_Petugas', label: 'Selfie Petugas', type: 'photo', required: true },
+{ name: 'Foto_Jalan_Lingkungan', label: 'Foto Jalan Lingkungan', type: 'photo' },
+{ name: 'Foto_Ruangan', label: 'Foto Ruangan', type: 'photo' },
+{ name: 'Foto_Kamar_Mandi', label: 'Foto Kamar Mandi', type: 'photo' },
+{ name: 'Foto_KWH_Listrik', label: 'Foto KWH Listrik', type: 'photo' },
+{ name: 'Foto_Saluran_Drainase', label: 'Foto Saluran Drainase', type: 'photo' },
+{ name: 'Foto_Instalasi_Air', label: 'Foto Instalasi Air', type: 'photo' },
+{ name: 'Foto_Plat_No_Rumah', label: 'Foto Plat No Rumah', type: 'photo' },
+]},
+{ section: 'III. Spesifikasi Teknis', fields: [
+{ name: 'Spek_Jalan_Utama', label: 'Spek Jalan Utama', type: 'select', dropdownKey: 'Spek_Jalan_Utama' },
+{ name: 'Spek_Jalan_Lingkungan', label: 'Spek Jalan Lingkungan', type: 'select', dropdownKey: 'Spek_Jalan_Lingkungan' },
+{ name: 'Saluran_Utama', label: 'Saluran Utama', type: 'select', dropdownKey: 'Saluran_Utama' },
+{ name: 'Saluran_Lingkungan', label: 'Saluran Lingkungan', type: 'select', dropdownKey: 'Saluran_Lingkungan' },
+{ name: 'Listrik_LPA', label: 'Listrik', type: 'select', dropdownKey: 'Listrik_LPA' },
+{ name: 'Spek_Air_Bersih', label: 'Spek Air Bersih', type: 'select', dropdownKey: 'Spek_Air_Bersih' },
+{ name: 'Telepon', label: 'Telepon', type: 'select', dropdownKey: 'Telepon' },
+{ name: 'Layak_Huni_LPA', label: 'Layak Huni', type: 'select', dropdownKey: 'Layak_Huni_LPA', required: true },
+{ name: 'Catatan', label: 'Catatan', type: 'textarea' },
+]},
+{ section: 'IV. Pengesahan', fields: [
+{ name: 'Nama_Petugas', label: 'Nama Petugas', type: 'text', required: true },
+{ name: 'Jabatan_Petugas', label: 'Jabatan Petugas', type: 'text' },
+{ name: 'Tanda_Tangan_Petugas', label: 'Tanda Tangan Petugas', type: 'signature', required: true },
+{ name: 'Nama_Atasan_1', label: 'Nama Atasan 1', type: 'text' },
+{ name: 'Jabatan_Atasan_1', label: 'Jabatan Atasan 1', type: 'select', dropdownKey: 'Jabatan_Atasan_1' },
+{ name: 'Nama_Atasan_2', label: 'Nama Atasan 2', type: 'text' },
+{ name: 'Jabatan_Atasan_2', label: 'Jabatan Atasan 2', type: 'select', dropdownKey: 'Jabatan_Atasan_2' },
+{ name: 'Pejabat_Penugasan', label: 'Pejabat Penugasan', type: 'text' },
+{ name: 'Jabatan_Penugasan', label: 'Jabatan Penugasan', type: 'select', dropdownKey: 'Jabatan_Penugasan' },
+]}
+]
+};
+
+const CustomerDetailModal = ({ item, onClose, onEdit, onRefresh }) => {
+const [data, setData] = useState(null);
+const [loading, setLoading] = useState(true);
+const [isGenerating, setIsGenerating] = useState(false);
+const [isDeleting, setIsDeleting] = useState(false); 
+const [showFormatModal, setShowFormatModal] = useState(false);
+const [localDocs, setLocalDocs] = useState([]);
+const [previewUrl, setPreviewUrl] = useState(null);
+
+useEffect(() => {
+    if (!item) return;
+    setLoading(true);
+    setPreviewUrl(null);
+    setLocalDocs(IDB.getGeneratedDocs().filter(d => d.id === item?.id));
+    
+    if(typeof google !== 'undefined' && google.script) {
+        google.script.run.withSuccessHandler(res => {
+            setData(res);
+            
+            // FITUR BARU: Menarik riwayat URL Doc/PDF dari server agar bisa dilihat semua petugas
+            let dbDocs = [];
+            if (res && res.URL_PDF) dbDocs.push({ format: 'pdf', url: res.URL_PDF });
+            if (res && res.URL_DOCX) dbDocs.push({ format: 'doc', url: res.URL_DOCX });
+            
+            if(dbDocs.length > 0) {
+                setLocalDocs(dbDocs);
+            }
+            
+            setLoading(false);
+        }).getDataById(item.type, item.id);
+    } else {
+        setTimeout(() => {
+            setData({
+                Nama_Nasabah: item.name,
+                Alamat_Perusahaan: "Jl. Sudirman No 123, Jakarta\n\nLink Maps: https://maps.google.com/?q=-6.2,106.8",
+                No_Telepon_Perusahaan: "081234567890",
+                Total_Gaji_Nasabah: "8500000",
+                Tanggal_Observasi_TEXT: "Senin, 11 Juni 2026",
+                Waktu_Observasi: "10:30"
+            });
+            setLoading(false);
+        }, 800);
+    }
+}, [item]);
+
+if (!item) return null;
+
+let addressClean = '-';
+let mapsUrl = '';
+let phone = '';
+let income = '';
+let dateStr = item.date;
+let timeStr = '-';
+
+if (data) {
+    const addressRaw = data.Alamat_Perusahaan || data.Alamat_Tempat_Usaha || data.Alamat_Perumahan || '-';
+    addressClean = addressRaw;
+    if(addressRaw.includes('Link Maps:')) {
+        const parts = addressRaw.split('Link Maps:');
+        addressClean = parts[0].trim();
+        mapsUrl = parts[1].trim();
+    } else if (addressClean !== '-') {
+        mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(addressClean)}`;
+    }
+    phone = data.No_Telp_Nasabah || data.No_Telepon_Perusahaan || data.No_Telp || data.Telepon || '';
+    income = data.Total_Gaji_Nasabah || data['Rata-Rata_Penj_Kotor_Bulanan'] || '';
+    dateStr = data.Tanggal_Observasi_TEXT || data.Tanggal_Survey_TEXT || data.Tanggal_Observasi || data.Tanggal_Survey || item.date;
+    timeStr = data.Waktu_Observasi || '-';
+}
+
+const handleGenerateFromModal = (formatType) => {
+    if (!data) return;
+    setIsGenerating(true);
+    setShowFormatModal(false);
+    
+    const payload = { type: item.type, id: item.id, data: data };
+    
+    if(typeof google !== 'undefined' && google.script) {
+        google.script.run
+        .withSuccessHandler((res) => { 
+            setIsGenerating(false);
+            if(res.success) {
+                IDB.saveGeneratedDoc(item.id, item.type, res.url, res.format);
+                // Kita load ulang localDocs dari state sebelumnya + yang baru
+                setLocalDocs(prev => {
+                    const filtered = prev.filter(d => d.format !== res.format);
+                    return [...filtered, { format: res.format, url: res.url }];
+                });
+                alert("Dokumen Laporan berhasil dibuat!");
+            } else { alert(res.message); }
+        })
+        .withFailureHandler((err) => { setIsGenerating(false); alert("Error: " + err.message); })
+        .generateReport(JSON.stringify(payload), formatType);
+    } else {
+        setTimeout(() => {
+            setIsGenerating(false);
+            IDB.saveGeneratedDoc(item.id, item.type, "https://example.com/mock.pdf", formatType);
+            setLocalDocs(IDB.getGeneratedDocs().filter(d => d.id === item.id));
+            alert("Dokumen berhasil dibuat (Mode Lokal)");
+        }, 1500);
+    }
+};
+
+const openPreview = (url) => {
+    let pUrl = url.replace(/\/edit.*$/, '/preview').replace(/\/view.*$/, '/preview');
+    if(!pUrl.includes('preview')) pUrl += '/preview';
+    setPreviewUrl(pUrl);
+};
+
+const handleShareDoc = async (url) => {
+    const shareUrl = url.replace('/preview', '/view');
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: `Laporan ${item.type} - ${item.name}`,
+                text: `Berikut adalah link dokumen laporan ${item.type} atas nama ${item.name}:`,
+                url: shareUrl,
+            });
+        } catch (err) {
+            console.log('Share dibatalkan atau error:', err);
+        }
+    } else {
+        try {
+            const textArea = document.createElement("textarea");
+            textArea.value = shareUrl;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand("copy");
+            textArea.remove();
+            alert('Link dokumen berhasil disalin ke clipboard!');
+        } catch (err) {
+            alert('Gagal menyalin link.');
+        }
+    }
+};
+
+const handleDelete = () => {
+    if(!confirm("⚠️ PERINGATAN!\n\nApakah Anda yakin ingin menghapus data nasabah ini secara permanen?\n\nData di spreadsheet akan dihapus dan semua file terkait nasabah ini akan dipindahkan ke Folder Sampah.")) return;
+    
+    setIsDeleting(true);
+    const payload = { type: item.type, id: item.id };
+    
+    if(typeof google !== 'undefined' && google.script) {
+        google.script.run
+        .withSuccessHandler((res) => {
+            setIsDeleting(false);
+            if(res.success) {
+                let docs = IDB.getGeneratedDocs();
+                docs = docs.filter(d => d.id !== item.id);
+                safeStorage.set('generated_docs', docs);
+                
+                alert(res.message);
+                onClose();
+                if(onRefresh) onRefresh(); 
+            } else {
+                alert(res.message);
+            }
+        })
+        .withFailureHandler((err) => {
+            setIsDeleting(false);
+            alert("Error: " + err.message);
+        })
+        .deleteSubmission(JSON.stringify(payload));
+    } else {
+        setTimeout(() => {
+            setIsDeleting(false);
+            alert("Data berhasil dihapus (Mode Lokal)");
+            onClose();
+            if(onRefresh) onRefresh();
+        }, 1500);
+    }
+};
+
+return (
+    <Fragment>
+    {isGenerating && <FullScreenLoader text="Sedang membuat dokumen laporan..." />}
+    {isDeleting && <FullScreenLoader text="Menghapus data & memindahkan file ke folder sampah..." />}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+            <div className="flex justify-between items-center p-3.5 border-b border-gray-100 bg-gray-50">
+                <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center"><Icon name="user" size={14}/></div>
+                    <h3 className="font-bold text-[13px] text-neutral">Detail Nasabah</h3>
+                </div>
+                <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 text-gray-600 transition-colors"><Icon name="x" size={14}/></button>
+            </div>
+            
+            <div className="p-4 overflow-y-auto flex-1">
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center py-10">
+                        <Icon name="loader" className="animate-spin text-primary mb-2" size={24} />
+                        <span className="text-[11px] text-gray-500 font-medium">Menarik data dari sistem...</span>
+                    </div>
+                ) : data ? (
+                    <div className="space-y-4">
+                        <div className="border-b border-gray-100 pb-3">
+                            <p className="text-[10px] text-gray-500 font-semibold uppercase mb-0.5 tracking-wide">Nama Nasabah</p>
+                            <p className="text-[15px] font-extrabold text-neutral leading-tight mb-2.5">{item.name}</p>
+                            <button onClick={handleDelete} className="py-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 rounded flex items-center gap-1.5 text-[10px] font-bold border border-red-100 transition-colors w-max">
+                                <Icon name="trash-2" size={12}/> Hapus Data Nasabah Ini
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1 tracking-wide">Tipe Form</p>
+                                <span className="text-[10px] font-bold text-primary bg-secondary px-2 py-1 rounded border border-green-200 inline-block">{item.type}</span>
+                            </div>
+                            <div>
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1 tracking-wide">ID Transaksi</p>
+                                <p className="text-[12px] font-mono font-semibold text-gray-700">{item.id}</p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1 tracking-wide">Tgl Survey</p>
+                                <p className="text-[12px] text-gray-800 font-semibold">{dateStr}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1 tracking-wide">Waktu Survey</p>
+                                <p className="text-[12px] text-gray-800 font-semibold">{timeStr}</p>
+                            </div>
+                        </div>
+                        {income && (
+                            <div>
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1 tracking-wide">Est. Penghasilan / Penjualan</p>
+                                <p className="text-[13px] font-bold text-green-600">Rp {Number(income).toLocaleString('id-ID')}</p>
+                            </div>
+                        )}
+                        <div>
+                            <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1 tracking-wide">Lokasi / Alamat</p>
+                            <p className="text-[12px] text-gray-800 leading-snug whitespace-pre-wrap font-medium">{addressClean}</p>
+                        </div>
+
+                        {localDocs.length > 0 && (
+                            <div className="pt-3 border-t border-gray-100 mt-2">
+                                <p className="text-[10px] text-gray-500 font-semibold uppercase mb-2 tracking-wide">File Laporan Dibuat</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {localDocs.map((doc, idx) => (
+                                        <button key={idx} onClick={() => openPreview(doc.url)} className={`px-3 py-2 text-[10px] font-bold rounded-lg flex items-center gap-1.5 shadow-sm transition-colors border ${doc.format === 'pdf' ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'}`}>
+                                            <Icon name="file-text" size={12} /> Preview {doc.format.toUpperCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                                
+                                {previewUrl && (
+                                    <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex flex-col h-[350px] shadow-inner">
+                                        <div className="flex justify-between items-center p-2.5 bg-gray-200 border-b border-gray-300">
+                                            <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1.5"><Icon name="file-text" size={14}/> Pratinjau Dokumen</span>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleShareDoc(previewUrl)} className="text-blue-600 hover:text-blue-800 bg-white p-1.5 rounded shadow-sm border border-gray-100 flex items-center gap-1" title="Share Dokumen"><Icon name="share-2" size={14}/> <span className="text-[9px] font-bold hidden sm:inline">Share</span></button>
+                                                <a href={previewUrl.replace('/preview', '/view')} target="_blank" className="text-primary hover:text-green-800 bg-white p-1.5 rounded shadow-sm border border-gray-100 flex items-center gap-1" title="Print/Buka Penuh"><Icon name="printer" size={14}/> <span className="text-[9px] font-bold hidden sm:inline">Print</span></a>
+                                                <button onClick={() => setPreviewUrl(null)} className="text-gray-500 hover:text-red-500 bg-white p-1.5 rounded shadow-sm border border-gray-100" title="Tutup Pratinjau"><Icon name="x" size={14}/></button>
+                                            </div>
+                                        </div>
+                                        <iframe src={previewUrl} className="w-full flex-1 bg-white" frameBorder="0"></iframe>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="text-center py-6">
+                        <Icon name="alert-circle" size={24} className="mx-auto text-red-400 mb-2"/>
+                        <p className="text-[11px] text-gray-500 font-medium">Data detail belum tersinkronisasi sempurna.</p>
+                    </div>
+                )}
+            </div>
+            
+            {data && (
+                <div className="p-3.5 border-t border-gray-100 bg-gray-50 space-y-2.5">
+                    <div className="flex gap-2 relative">
+                        {mapsUrl && (
+                            <a href={mapsUrl} target="_blank" className="flex-1 py-2.5 bg-blue-100 text-blue-700 rounded-lg flex items-center justify-center gap-1.5 text-[11px] font-bold hover:bg-blue-200 transition-colors shadow-sm">
+                                <Icon name="map-pin" size={14} /> Maps
+                            </a>
+                        )}
+                        {phone && (
+                            <a href={`tel:${phone}`} className="flex-1 py-2.5 bg-green-100 text-green-700 rounded-lg flex items-center justify-center gap-1.5 text-[11px] font-bold hover:bg-green-200 transition-colors shadow-sm">
+                                <Icon name="phone" size={14} /> Telepon
+                            </a>
+                        )}
+                        
+                        <div className="flex-1 relative">
+                            <button onClick={() => setShowFormatModal(!showFormatModal)} className="w-full py-2.5 bg-orange-100 text-orange-700 rounded-lg flex items-center justify-center gap-1.5 text-[11px] font-bold hover:bg-orange-200 transition-colors shadow-sm">
+                                <Icon name="file-text" size={14} /> Print Baru
+                            </button>
+                            {showFormatModal && (
+                                <div className="absolute bottom-full right-0 w-36 mb-2 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden z-50">
+                                    <button onClick={() => handleGenerateFromModal('pdf')} className="w-full text-left px-3 py-2.5 text-[11px] font-bold hover:bg-gray-50 flex items-center gap-2 border-b border-gray-100 text-neutral">
+                                        <Icon name="file-text" size={14} className="text-red-500" /> Cetak PDF
+                                    </button>
+                                    <button onClick={() => handleGenerateFromModal('doc')} className="w-full text-left px-3 py-2.5 text-[11px] font-bold hover:bg-gray-50 flex items-center gap-2 text-neutral">
+                                        <Icon name="file-text" size={14} className="text-blue-500" /> Cetak DOCX
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <button onClick={() => { onClose(); onEdit(item.id, item.type); }} className="w-full py-2.5 bg-gradient-to-r from-primary to-emerald-600 text-white rounded-lg flex items-center justify-center gap-2 text-[11px] font-bold shadow hover:shadow-md transition-all active:scale-[0.98]">
+                        <Icon name="edit" size={14} /> Buka & Edit Keseluruhan Form
+                    </button>
+                </div>
+            )}
+        </div>
+    </div>
+    </Fragment>
+)
+};
+
+
+const SignatureInput = ({ label, onChange, value, required }) => {
+const canvasRef = useRef(null);
+const padRef = useRef(null);
+const [isEditing, setIsEditing] = useState(false);
+const borderClass = value ? 'border-primary/40 bg-green-50/10' : (required ? 'border-orange-200 bg-orange-50/20' : 'border-primary/30 bg-[#FAFAFA]');
+
+useEffect(() => {
+    let timer;
+    if (isEditing && canvasRef.current && window.SignaturePad) {
+        timer = setTimeout(() => {
+            const canvas = canvasRef.current;
+            if(!canvas) return;
+            const ratio = Math.max(window.devicePixelRatio || 1, 1);
+            canvas.width = canvas.offsetWidth * ratio;
+            canvas.height = canvas.offsetHeight * ratio;
+            canvas.getContext("2d").scale(ratio, ratio);
+
+            padRef.current = new window.SignaturePad(canvas, { backgroundColor: '#ffffff', penColor: '#000000' });
+            if(value) {
+                try { padRef.current.fromDataURL(value); } catch(e) {}
+            }
+        }, 150); 
+    }
+    return () => { if(timer) clearTimeout(timer); };
+}, [isEditing]);
+
+const clear = () => { if (padRef.current) { padRef.current.clear(); } };
+const closeEdit = () => { setIsEditing(false); padRef.current = null; };
+
+const saveAndClose = () => {
+    if (padRef.current) {
+        if (padRef.current.isEmpty() && !value) {
+            onChange('');
+        } else {
+            onChange(padRef.current.toDataURL('image/jpeg', 0.5));
+        }
+    }
+    closeEdit();
+};
+
+return (
+<div className="mb-3 col-span-full">
+<div className={`relative border rounded flex flex-col justify-center cursor-pointer shadow-sm transition-colors hover:bg-white min-h-[60px] p-2.5 ${borderClass}`} onClick={() => setIsEditing(true)}>
+    <div className="flex items-center mb-1.5">
+        <Icon name="pen" size={16} className={`mr-2.5 shrink-0 ${value ? 'text-primary' : (required ? 'text-orange-400' : 'text-primary/50')}`} />
+        <label className="text-[10px] font-semibold text-gray-500 tracking-wide flex-1 cursor-pointer">{label} {required && <span className="text-red-500">*</span>}</label>
+    </div>
+    <div className="pl-6 h-12 w-full flex items-center">
+        {value ? <img src={value} className="h-full object-contain" /> : <span className="text-[11px] text-gray-400 font-medium">Klik di sini untuk mengisi tanda tangan...</span>}
+    </div>
+</div>
+
+{isEditing && (
+    <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center p-4 bg-black/80 backdrop-blur-sm touch-none">
+        <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col h-[70vh] max-h-[500px] overflow-hidden">
+            <div className="flex justify-between items-center p-4 bg-gray-50 border-b border-gray-100">
+                <span className="font-bold text-sm text-neutral flex items-center gap-2"><Icon name="pen" size={16} className="text-primary"/> Tanda Tangan: {label}</span>
+                <button onClick={closeEdit} className="text-gray-400 hover:text-red-500 p-1"><Icon name="x" size={18} /></button>
+            </div>
+            <div className="flex-1 relative bg-white border-b border-dashed border-gray-300">
+                <canvas ref={canvasRef} className="absolute inset-0 w-full h-full cursor-crosshair touch-none"></canvas>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.05]">
+                    <span className="text-2xl font-bold uppercase tracking-widest text-center px-4">Area Tanda Tangan<br/>(Gunakan Jari Anda)</span>
+                </div>
+            </div>
+            <div className="p-3 bg-gray-50 flex justify-between gap-3">
+                <button onClick={clear} className="flex-1 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs shadow-sm border border-red-100 hover:bg-red-100 transition-colors flex justify-center items-center gap-2"><Icon name="trash-2" size={16}/> Hapus Ulang</button>
+                <button onClick={saveAndClose} className="flex-[2] py-3 bg-gradient-to-r from-primary to-emerald-600 text-white rounded-xl font-bold text-xs shadow hover:shadow-md transition-colors flex justify-center items-center gap-2"><Icon name="check" size={16}/> Simpan Tanda Tangan</button>
+            </div>
+        </div>
+    </div>
+)}
+</div>
+);
+};
+
+const PhotoInput = ({ label, value, onChange, required, logoApp }) => {
+const [isProcessing, setIsProcessing] = useState(false);
+const borderClass = value ? 'border-primary/40 bg-green-50/10 border-solid' : (required ? 'border-orange-300 bg-orange-50/20 border-dashed' : 'border-primary/30 border-dashed bg-[#FAFAFA]');
+const fileInputRef = useRef(null);
+const fileGalleryRef = useRef(null);
+
+const processPhoto = (file, isCamera) => {
+if (!file) return;
+setIsProcessing(true);
+const reader = new FileReader();
+reader.readAsDataURL(file);
+reader.onload = e => {
+const img = new Image(); img.src = e.target.result;
+img.onload = () => {
+    const canvas = document.createElement('canvas'); 
+    const MAX = 800; 
+    let w = img.width, h = img.height;
+    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+
+    if (isCamera) {
+        const doWatermark = (lat, lng, address) => {
+            const timeStr = new Date().toLocaleString('id-ID');
+            const addrStr = address ? address.substring(0, 60) + (address.length > 60 ? '...' : '') : 'Lokasi tidak diketahui';
+            const coordStr = (lat && lng) ? `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}` : 'GPS Tdk Tersedia / Tdk Diizinkan';
+            
+            const barHeight = Math.max(70, canvas.height * 0.18); 
+            ctx.fillStyle = 'rgba(0,0,0,0.6)'; 
+            ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+            
+            ctx.shadowColor = "black"; ctx.shadowBlur = 3; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+            
+            ctx.fillStyle = '#FFD700'; 
+            ctx.font = `bold ${Math.max(12, barHeight * 0.22)}px sans-serif`;
+            ctx.fillText(`📅 ${timeStr}`, 12, canvas.height - (barHeight * 0.68));
+            
+            ctx.fillStyle = '#4ade80'; 
+            ctx.font = `bold ${Math.max(11, barHeight * 0.20)}px monospace`;
+            ctx.fillText(`📍 ${coordStr}`, 12, canvas.height - (barHeight * 0.38));
+
+            ctx.fillStyle = '#ffffff'; 
+            ctx.font = `bold ${Math.max(11, barHeight * 0.20)}px sans-serif`;
+            ctx.fillText(`🏠 ${addrStr}`, 12, canvas.height - (barHeight * 0.12));
+
+            const applyLogoAndSave = () => {
+                if (logoApp) {
+                    const logoImg = new Image();
+                    logoImg.crossOrigin = "anonymous";
+                    logoImg.src = logoApp;
+                    logoImg.onload = () => {
+                        const logoW = Math.max(50, canvas.width * 0.15);
+                        const logoH = logoW * (logoImg.height / logoImg.width);
+                        ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 5;
+                        ctx.drawImage(logoImg, canvas.width - logoW - 15, 15, logoW, logoH);
+                        onChange(canvas.toDataURL('image/jpeg', 0.7));
+                        setIsProcessing(false);
+                    };
+                    logoImg.onerror = () => {
+                        onChange(canvas.toDataURL('image/jpeg', 0.7));
+                        setIsProcessing(false);
+                    }
+                } else {
+                    onChange(canvas.toDataURL('image/jpeg', 0.7));
+                    setIsProcessing(false);
+                }
+            };
+            applyLogoAndSave();
+        };
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                async pos => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+                        const data = await res.json();
+                        const addr = data.display_name;
+                        doWatermark(lat, lng, addr);
+                    } catch(e) {
+                        doWatermark(lat, lng, null);
+                    }
+                },
+                err => doWatermark(null, null, null), 
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+        } else {
+            doWatermark(null, null, null);
+        }
+    } else {
+        onChange(canvas.toDataURL('image/jpeg', 0.7));
+        setIsProcessing(false);
+    }
+};
+};
+};
+
+return (
+<div className="flex flex-col items-center mb-4">
+<p className="text-[10px] font-semibold text-gray-500 mb-1.5 text-center flex gap-1 justify-center tracking-wide">{label} {required && <span className="text-red-500">*</span>}</p>
+<div className={`w-full rounded border flex flex-col items-center justify-center overflow-hidden relative shadow-sm transition-colors hover:bg-white ${borderClass} p-3`}>
+{isProcessing ? (
+<div className="flex flex-col items-center py-6"><Icon name="loader" size={24} className="animate-spin text-primary mb-2" /><span className="text-[10px] text-primary font-bold">Membaca GPS & Memproses...</span></div>
+) : value ? (
+<div className="w-full relative">
+    <img src={value} alt={label} className="w-full h-32 object-contain rounded" />
+    <div className="absolute top-2 right-2 flex gap-1">
+        <button onClick={() => fileInputRef.current.click()} className="p-1.5 bg-white/80 backdrop-blur rounded shadow hover:bg-white text-primary"><Icon name="camera" size={14}/></button>
+        <button onClick={() => onChange('')} className="p-1.5 bg-white/80 backdrop-blur rounded shadow hover:bg-white text-red-500"><Icon name="trash-2" size={14}/></button>
+    </div>
+</div>
+) : (
+<div className="flex flex-col items-center gap-3 w-full py-2">
+    <div className="flex w-full gap-2">
+        <button onClick={() => fileInputRef.current.click()} className="flex-1 flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-primary/50 transition-colors">
+            <Icon name="camera" size={20} className={required ? "text-orange-400 mb-1" : "text-primary/70 mb-1"} />
+            <span className="text-[9px] font-bold text-gray-600 uppercase">Kamera (Watermark)</span>
+        </button>
+        <button onClick={() => fileGalleryRef.current.click()} className="flex-1 flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-blue-300 transition-colors">
+            <Icon name="image" size={20} className="text-blue-400 mb-1" />
+            <span className="text-[9px] font-bold text-gray-600 uppercase">Galeri (Polos)</span>
+        </button>
+    </div>
+</div>
+)}
+<input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0], true)} disabled={isProcessing} />
+<input ref={fileGalleryRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0], false)} disabled={isProcessing} />
+</div>
+</div>
+);
+};
+
+// --- MAIN PAGES ---
+const FormPage = ({ formType, onBack, initialDraftId = null, initialHistoryId = null, dropdownData = {}, onSubmitSuccess, logoApp }) => {
+const [formData, setFormData] = useState({});
+const [isSubmitting, setIsSubmitting] = useState(false);
+const [isGenerating, setIsGenerating] = useState(false);
+const [showFormatModal, setShowFormatModal] = useState(false);
+const [generatedDoc, setGeneratedDoc] = useState(null); 
+const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+const config = formsConfig[formType];
+
+useEffect(() => {
+const loadData = async () => {
+try {
+if (initialHistoryId) {
+    setIsLoadingHistory(true);
+    if(typeof google !== 'undefined' && google.script) {
+        google.script.run.withSuccessHandler(data => {
+            if(data) {
+                Object.keys(data).forEach(key => {
+                    if (typeof data[key] === 'string' && data[key].includes('\n\nLink Maps: ')) {
+                        const parts = data[key].split('\n\nLink Maps: ');
+                        data[key] = parts[0].trim();
+                        data[`${key}_Maps`] = parts[1].trim();
+                    }
+                });
+                setFormData(data);
+            }
+            setIsLoadingHistory(false);
+        }).getDataById(formType, initialHistoryId);
+    } else {
+        setTimeout(() => setIsLoadingHistory(false), 1000);
+    }
+} else if (initialDraftId) {
+    const drafts = await IDB.getDrafts();
+    const d = drafts.find(x => x.id === initialDraftId);
+    if (d) setFormData(d.data);
+} else {
+    const autoSave = await IDB.getAutoSave(formType);
+    if (autoSave) setFormData(autoSave);
+}
+} catch(e) { setIsLoadingHistory(false); }
+};
+loadData();
+}, [formType, initialDraftId, initialHistoryId]);
+
+const handleChange = (name, value) => {
+setFormData(prev => {
+  let newData = { ...prev };
+  let processedValue = value;
+  const fieldDef = config.flatMap(s => s.fields).find(f => f.name === name);
+  if (fieldDef) {
+    if (fieldDef.type === 'number') {
+        processedValue = processedValue.replace(/[^0-9.]/g, ''); 
+    } else if (fieldDef.type !== 'select' && (fieldDef.type === 'tel' || name.toLowerCase().includes('telp') || name.toLowerCase().includes('telepon'))) {
+        processedValue = processedValue.replace(/[^0-9+\-\s()]/g, '');
+    }
+  }
+  
+  newData[name] = processedValue;
+
+  if (name === 'Pembayaran_Gaji' && processedValue !== 'Transfer & Tunai') {
+    newData.Persentase_Transfer = '';
+    newData.Persentase_Tunai = '';
+  }
+  
+  if (name === 'Persentase_Transfer') {
+    const transfer = parseFloat(processedValue) || 0;
+    newData.Persentase_Tunai = Math.max(0, 100 - transfer);
+  }
+
+  if (name === 'Nama_Nasabah') {
+    const autoIdKey = formType === 'LPA' ? 'LPA_ID' : 'Observasi_ID';
+    if (!prev[autoIdKey]) { 
+      const now = new Date();
+      const r = Math.floor(Math.random() * 900) + 100;
+      const d = String(now.getDate()).padStart(2, '0'), m = String(now.getMonth() + 1).padStart(2, '0');
+      const idStr = `${r}-${d}${m}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}-${processedValue.replace(/\s+/g, '').substring(0,10).toUpperCase()}`;
+      newData[autoIdKey] = idStr;
+    }
+  }
+
+  if (formType === 'OTS Karyawan' && ['Gaji_Pokok', 'Tunjangan_Tetap', 'Penghasilan_Lainnya', 'Tunjangan_Tdk_Tetap'].includes(name)) {
+    newData.Total_Gaji_Nasabah = (parseFloat(newData.Gaji_Pokok)||0) + (parseFloat(newData.Tunjangan_Tetap)||0) + (parseFloat(newData.Tunjangan_Tdk_Tetap)||0) + (parseFloat(newData.Penghasilan_Lainnya)||0);
+  }
+  
+  // FITUR: Perhitungan Dua Arah & Skala Proporsional Hari Kerja untuk OTS Usaha
+  if (formType === 'OTS Usaha') {
+    const getHariKerjaSebulan = (hkMinggu) => {
+        let m = parseFloat(hkMinggu);
+        if(isNaN(m) || m === 0) return 30; // Jika tidak diisi, basis 30 hari sebulan
+        return Math.round((m / 7) * 30); // Proporsional ke skala 30 hari
+    };
+    const hariKerjaBln = getHariKerjaSebulan(newData['Hari_Kerja_Per_Minggu']);
+    
+    // Auto-update Bulanan jika "Hari Kerja" diubah oleh user (dan harian sdh diisi)
+    if (name === 'Hari_Kerja_Per_Minggu') {
+        if (newData['Rata-Rata_Penj_Kotor_Harian']) newData['Rata-Rata_Penj_Kotor_Bulanan'] = Math.round(parseFloat(newData['Rata-Rata_Penj_Kotor_Harian']) * hariKerjaBln);
+        if (newData['Biaya_Ops_Harian']) newData['Biaya_Ops_Bulanan'] = Math.round(parseFloat(newData['Biaya_Ops_Harian']) * hariKerjaBln);
+    }
+    
+    // Penjualan Kotor (Harian <-> Bulanan)
+    if (name === 'Rata-Rata_Penj_Kotor_Harian') newData['Rata-Rata_Penj_Kotor_Bulanan'] = Math.round((parseFloat(processedValue) || 0) * hariKerjaBln);
+    if (name === 'Rata-Rata_Penj_Kotor_Bulanan') newData['Rata-Rata_Penj_Kotor_Harian'] = Math.round((parseFloat(processedValue) || 0) / hariKerjaBln);
+    
+    // Biaya Ops (Harian <-> Bulanan)
+    if (name === 'Biaya_Ops_Harian') newData['Biaya_Ops_Bulanan'] = Math.round((parseFloat(processedValue) || 0) * hariKerjaBln);
+    if (name === 'Biaya_Ops_Bulanan') newData['Biaya_Ops_Harian'] = Math.round((parseFloat(processedValue) || 0) / hariKerjaBln);
+    
+    // Biaya Sewa (Harian <-> Bulanan) -> Menggunakan basis absolut 30 hari tanpa terpengaruh "Hari Kerja"
+    if (name === 'Biaya_Sewa_Harian') newData['Biaya_Sewa_Bulanan'] = Math.round((parseFloat(processedValue) || 0) * 30);
+    if (name === 'Biaya_Sewa_Bulanan') newData['Biaya_Sewa_Harian'] = Math.round((parseFloat(processedValue) || 0) / 30);
+  }
+
+  IDB.setAutoSave(formType, newData);
+  return newData;
+});
+};
+
+const handleGetLocation = (fieldName) => {
+if (!navigator.geolocation) return alert("Browser tidak support GPS.");
+handleChange(`${fieldName}_Maps`, 'Mendapatkan titik koordinat...');
+handleChange(fieldName, 'Sedang mencari alamat dari GPS...');
+
+navigator.geolocation.getCurrentPosition(
+async pos => {
+const {latitude, longitude} = pos.coords;
+const link = `https://www.google.com/maps?q=${latitude},${longitude}`;
+handleChange(`${fieldName}_Maps`, link);
+handleChange(`${fieldName}_Lat`, latitude);
+handleChange(`${fieldName}_Lng`, longitude);
+
+try {
+  const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`);
+  const data = await res.json();
+  if(data && data.display_name) {
+    handleChange(fieldName, data.display_name);
+  } else {
+    handleChange(fieldName, `Lat: ${latitude}, Lng: ${longitude}`);
+  }
+} catch(e) {
+  handleChange(fieldName, `Lat: ${latitude}, Lng: ${longitude}`);
+}
+},
+err => {
+alert("Gagal mendapatkan lokasi GPS. Pastikan Location diizinkan di browser.");
+handleChange(`${fieldName}_Maps`, '');
+handleChange(fieldName, '');
+},
+{ enableHighAccuracy: true, timeout: 15000 }
+);
+};
+
+const handleSaveDraft = async () => {
+const draftId = initialDraftId || `draft_${Date.now()}`;
+const draftName = formData.Nama_Nasabah || 'Tanpa Nama';
+await IDB.saveDraft({ id: draftId, formType, name: draftName, date: new Date().toLocaleDateString('id-ID'), data: formData });
+await IDB.clearAutoSave(formType);
+alert("Draft berhasil disimpan ke penyimpanan offline device ini!");
+onBack();
+};
+
+const handleGenerate = (formatType) => {
+const requireds = config.flatMap(s => s.fields).filter(f => f.required);
+const missing = requireds.filter(f => !formData[f.name]);
+if (missing.length > 0) return alert(`Ada ${missing.length} data wajib yang belum diisi!`);
+
+setIsGenerating(true);
+setShowFormatModal(false);
+
+let payloadData = { ...formData };
+Object.keys(payloadData).forEach(key => {
+if(key.endsWith('_Maps') && payloadData[key]) {
+const originalKey = key.replace('_Maps', '');
+payloadData[originalKey] = `${payloadData[originalKey] || ''}\n\nLink Maps: ${payloadData[key]}`;
+delete payloadData[key]; 
+}
+});
+
+const uppercaseFields = ['Nama_Petugas', 'Jabatan_Petugas', 'Nama_Atasan_1', 'Jabatan_Atasan_1', 'Nama_Atasan_2', 'Jabatan_Atasan_2', 'Nama_DBMS', 'Pejabat_Penugasan', 'Jabatan_Penugasan'];
+uppercaseFields.forEach(f => {
+  if (payloadData[f]) payloadData[f] = String(payloadData[f]).toUpperCase();
+});
+
+if (formType === 'LPA') {
+    const mapCheck = (field, dropdownKey) => {
+        const opts = dropdownData[dropdownKey] || [];
+        opts.forEach(opt => {
+            const safeOpt = opt.replace(/[^a-zA-Z0-9]/g, '');
+            payloadData[`${field}_${safeOpt}`] = payloadData[field] === opt ? '☑' : '☐';
+        });
+    };
+    mapCheck('Spek_Jalan_Utama', 'Spek_Jalan_Utama');
+    mapCheck('Spek_Jalan_Lingkungan', 'Spek_Jalan_Lingkungan');
+    mapCheck('Saluran_Utama', 'Saluran_Utama');
+    mapCheck('Saluran_Lingkungan', 'Saluran_Lingkungan');
+    mapCheck('Layak_Huni_LPA', 'Layak_Huni_LPA');
+}
+
+const submitId = formType === 'LPA' ? payloadData.LPA_ID : payloadData.Observasi_ID;
+const payload = { type: formType, id: submitId || `TRX-${Date.now()}`, data: payloadData };
+
+if(typeof google !== 'undefined' && google.script) {
+google.script.run
+.withSuccessHandler((res) => { 
+setIsGenerating(false);
+if(res.success) {
+    if(res.driveUrls) setFormData(prev => ({...prev, ...res.driveUrls}));
+    setGeneratedDoc({ url: res.url, format: res.format });
+    IDB.saveGeneratedDoc(submitId, formType, res.url, res.format);
+} else { alert(res.message); }
+})
+.withFailureHandler((err) => { setIsGenerating(false); alert("Error: " + err.message); })
+.generateReport(JSON.stringify(payload), formatType);
+} else {
+setTimeout(() => { 
+setIsGenerating(false);
+setGeneratedDoc({ url: "https://example.com/mock-pdf-preview", format: formatType });
+IDB.saveGeneratedDoc(submitId || `TRX-${Date.now()}`, formType, "https://example.com/mock-pdf-preview", formatType);
+}, 1500);
+}
+};
+
+const handleSubmit = () => {
+const requireds = config.flatMap(s => s.fields).filter(f => f.required);
+const missing = requireds.filter(f => !formData[f.name]);
+if (missing.length > 0) return alert(`Ada ${missing.length} data wajib yang belum diisi!`);
+
+setIsSubmitting(true);
+let payloadData = { ...formData };
+Object.keys(payloadData).forEach(key => {
+if(key.endsWith('_Maps') && payloadData[key]) {
+const originalKey = key.replace('_Maps', '');
+payloadData[originalKey] = `${payloadData[originalKey] || ''}\n\nLink Maps: ${payloadData[key]}`;
+delete payloadData[key]; 
+}
+});
+
+const uppercaseFields = ['Nama_Petugas', 'Jabatan_Petugas', 'Nama_Atasan_1', 'Jabatan_Atasan_1', 'Nama_Atasan_2', 'Jabatan_Atasan_2', 'Nama_DBMS', 'Pejabat_Penugasan', 'Jabatan_Penugasan'];
+uppercaseFields.forEach(f => {
+  if (payloadData[f]) payloadData[f] = String(payloadData[f]).toUpperCase();
+});
+
+if (formType === 'LPA') {
+    const mapCheck = (field, dropdownKey) => {
+        const opts = dropdownData[dropdownKey] || [];
+        opts.forEach(opt => {
+            const safeOpt = opt.replace(/[^a-zA-Z0-9]/g, '');
+            payloadData[`${field}_${safeOpt}`] = payloadData[field] === opt ? '☑' : '☐';
+        });
+    };
+    mapCheck('Spek_Jalan_Utama', 'Spek_Jalan_Utama');
+    mapCheck('Spek_Jalan_Lingkungan', 'Spek_Jalan_Lingkungan');
+    mapCheck('Saluran_Utama', 'Saluran_Utama');
+    mapCheck('Saluran_Lingkungan', 'Saluran_Lingkungan');
+    mapCheck('Layak_Huni_LPA', 'Layak_Huni_LPA');
+}
+
+const submitId = formType === 'LPA' ? payloadData.LPA_ID : payloadData.Observasi_ID;
+const payload = { type: formType, id: submitId || `TRX-${Date.now()}`, data: payloadData };
+
+if(typeof google !== 'undefined' && google.script) {
+google.script.run
+.withSuccessHandler(async (res) => { 
+setIsSubmitting(false);
+if(res.success) {
+await IDB.clearAutoSave(formType);
+if(initialDraftId) await IDB.deleteDraft(initialDraftId);
+alert(res.message);
+onSubmitSuccess(payloadData, formType);
+} else { alert(res.message); }
+})
+.withFailureHandler((err) => { setIsSubmitting(false); alert("Error: " + err.message); })
+.processSubmission(JSON.stringify(payload));
+} else {
+setTimeout(async () => { 
+setIsSubmitting(false); alert("Data diupdate (Lokal)"); 
+await IDB.clearAutoSave(formType); 
+onSubmitSuccess(payloadData, formType);
+}, 1500);
+}
+};
+
+if (isLoadingHistory) {
+  return <div className="min-h-screen bg-transparent flex flex-col items-center justify-center text-primary text-sm font-bold"><Icon name="loader" className="animate-spin mb-2" size={24}/> Memuat data dari sistem...</div>;
+}
+
+return (
+<Fragment>
+{isGenerating && <FullScreenLoader text="Mempersiapkan Dokumen Laporan..." />}
+{isSubmitting && <FullScreenLoader text="Menyimpan Data ke Sistem..." />}
+
+<div className="min-h-screen pb-8 relative z-20">
+<div className="flex items-center px-4 py-3 bg-white/90 backdrop-blur-md sticky top-0 z-50 shadow-sm border-b border-gray-100">
+<button onClick={onBack} className="w-8 h-8 bg-white border border-gray-200 rounded-full flex items-center justify-center text-primary shadow-sm mr-3 hover:bg-gray-50 transition-colors">
+<Icon name="arrow-left" size={16} />
+</button>
+<div className="flex flex-col">
+<span className="font-bold text-primary text-sm leading-tight">{formType}</span>
+<span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">{initialHistoryId ? 'Mode Edit Data' : (initialDraftId ? 'Edit Draft' : 'Input Baru (Auto-Saved)')}</span>
+</div>
+</div>
+
+<main className="px-3 py-4 max-w-xl mx-auto flex flex-col min-h-[85vh]">
+<div className="flex-1">
+{config.map((section, idx) => (
+<section key={idx} className="mb-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+<h3 className="flex items-center gap-2 mb-3 text-primary font-bold text-xs uppercase tracking-widest border-b border-gray-100 pb-2.5">{section.section}</h3>
+<div className={section.section.includes("Foto") || section.section.includes("Dokumentasi") ? "grid grid-cols-2 gap-3" : "space-y-1"}>
+{(section.fields || []).map(field => {
+const isFilled = formData[field.name] && String(formData[field.name]).trim() !== '';
+
+let isDisabled = false;
+if (field.name === 'Persentase_Transfer' && formData['Pembayaran_Gaji'] !== 'Transfer & Tunai') {
+    isDisabled = true;
+}
+
+if (field.type === 'photo') return <PhotoInput key={field.name} label={field.label} required={field.required} value={formData[field.name]} onChange={(v) => handleChange(field.name, v)} logoApp={logoApp} />;
+if (field.type === 'signature') return <SignatureInput key={field.name} label={field.label} required={field.required} value={formData[field.name]} onChange={(v) => handleChange(field.name, v)} />;
+
+return (
+<InputWrapper key={field.name} label={field.label} icon={getFieldIcon(field.name)} required={field.required} isFilled={isFilled} isReadOnly={field.readOnly || isDisabled} hidden={field.hidden}>
+{field.type === 'select' ? (
+<select disabled={isDisabled} value={formData[field.name] || ''} className="w-full text-[13px] bg-transparent outline-none p-0 border-none focus:ring-0 text-neutral font-semibold appearance-none" onChange={(e) => handleChange(field.name, e.target.value)}>
+<option value="">Pilih...</option>
+{((field.dropdownKey ? dropdownData[field.dropdownKey] : field.options) || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+</select>
+) : field.type === 'textarea' ? (
+<textarea disabled={isDisabled} readOnly={field.readOnly} rows="2" value={formData[field.name] || ''} className="w-full text-[13px] bg-transparent outline-none p-0 border-none focus:ring-0 text-neutral font-semibold resize-none mt-1" onChange={(e) => handleChange(field.name, e.target.value)}></textarea>
+) : field.type === 'address' ? (
+<div className="flex flex-col w-full">
+<textarea rows="2" placeholder="Tulis alamat lengkap disini..." value={formData[field.name] || ''} className="w-full text-[13px] bg-transparent outline-none p-0 border-none focus:ring-0 text-neutral font-semibold resize-none border-b border-gray-100 pb-1.5 mb-1.5 mt-1" onChange={(e) => handleChange(field.name, e.target.value)}></textarea>
+<div className="flex flex-col gap-1.5 mt-1 text-[10px] text-gray-500 bg-gray-50/70 p-2 rounded-lg border border-gray-100 shadow-sm w-full">
+    <span className="font-bold text-primary flex items-center gap-1"><Icon name="map-pin" size={12}/> Detail Titik (Maps):</span>
+    <div className="break-words mt-0.5 leading-tight font-medium">{formData[`${field.name}_Maps`] || 'Belum ada titik koordinat yang diambil.'}</div>
+    {formData[`${field.name}_Lat`] && (
+        <div className="mt-1 flex gap-2 font-mono text-[10px] text-gray-600">
+            <span>Lat: {formData[`${field.name}_Lat`]}</span><span>Lng: {formData[`${field.name}_Lng`]}</span>
+        </div>
+    )}
+</div>
+<button onClick={() => handleGetLocation(field.name)} className="w-full mt-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg h-8 flex items-center justify-center transition-colors gap-1.5 font-bold text-[11px]">
+<Icon name="map-pin" size={14} /> Ambil Titik GPS Saat Ini
+</button>
+</div>
+) : (
+<input type={field.type === 'tel' ? 'text' : field.type} readOnly={field.readOnly || isDisabled} disabled={isDisabled} value={formData[field.name] || ''} placeholder={isDisabled ? "Pilih Transfer & Tunai" : "Ketik disini..."} className="w-full text-[13px] bg-transparent outline-none p-0 border-none focus:ring-0 text-neutral font-semibold placeholder-gray-300" onChange={(e) => handleChange(field.name, e.target.value)} />
+)}
+{field.name === 'Total_Gaji_Nasabah' && isFilled && <div className="mt-1.5 p-1.5 bg-secondary border border-green-200 rounded text-[10px] text-primary font-bold shadow-inner">Total: Rp {Number(formData.Total_Gaji_Nasabah).toLocaleString('id-ID')}</div>}
+{field.name === 'Jumlah_Angsuran_Lain' && formData.Jumlah_Angsuran_Lain && formData.Jangka_Waktu_Pinjaman && (
+    <div className="mt-1.5 flex justify-between text-[10px] text-blue-700 font-bold bg-blue-50 p-1.5 rounded border border-blue-100">
+        <span>Est. Angsuran Lain:</span>
+        <span>Rp {(Number(formData.Jumlah_Angsuran_Lain) * Number(formData.Jangka_Waktu_Pinjaman)).toLocaleString('id-ID')}</span>
+    </div>
+)}
+{/* FITUR BARU: RATA-RATA GAJI PEGAWAI */}
+{field.name === 'Biaya_Gaji_Pegawai' && isFilled && formData.Jumlah_Pegawai && Number(formData.Jumlah_Pegawai) > 0 && (
+    <div className="mt-1.5 flex justify-between text-[10px] text-teal-700 font-bold bg-teal-50 p-1.5 rounded border border-teal-100 shadow-inner">
+        <span>Rata-rata Gaji per Pegawai:</span>
+        <span>Rp {Math.round(Number(formData.Biaya_Gaji_Pegawai) / Number(formData.Jumlah_Pegawai)).toLocaleString('id-ID')}</span>
+    </div>
+)}
+</InputWrapper>
+);
+})}
+</div>
+</section>
+))}
+</div>
+
+<div className="mt-4 p-4 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-3 relative">
+{generatedDoc && (
+  <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between shadow-inner">
+    <div className="flex items-center gap-2.5">
+      <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><Icon name="check" size={14} /></div>
+      <div>
+        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wide">Berhasil Digenerate</p>
+        <p className="text-xs font-bold text-blue-700 leading-tight">Laporan.{generatedDoc.format}</p>
+      </div>
+    </div>
+    <a href={generatedDoc.url} target="_blank" className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg shadow-sm transition-colors">Lihat Laporan</a>
+  </div>
+)}
+
+<div className="flex gap-2">
+    <button onClick={handleSaveDraft} disabled={isSubmitting || isGenerating} className="flex-1 py-3 bg-white border border-gray-300 text-gray-700 text-[11px] font-bold rounded-xl shadow-sm hover:bg-gray-50 flex justify-center items-center gap-2 transition-colors">
+        <Icon name="save" size={16} /> Simpan Draft
+    </button>
+    <div className="relative flex-[1.5]">
+        <button onClick={() => setShowFormatModal(!showFormatModal)} disabled={isSubmitting || isGenerating} className="w-full py-3 bg-green-50 border border-primary text-primary text-[11px] font-bold rounded-xl shadow-sm hover:bg-green-100 flex justify-center items-center gap-2 transition-colors">
+            <Icon name="printer" size={16} /> Cetak Laporan
+        </button>
+        {showFormatModal && (
+            <div className="absolute bottom-full left-0 w-full mb-2 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden z-50">
+                <button onClick={() => handleGenerate('pdf')} className="w-full text-left px-4 py-3 text-xs font-bold hover:bg-gray-50 flex items-center gap-2.5 border-b border-gray-100 text-neutral transition-colors">
+                    <Icon name="file-type-pdf" size={16} className="text-red-500" /> Format PDF
+                </button>
+                <button onClick={() => handleGenerate('doc')} className="w-full text-left px-4 py-3 text-xs font-bold hover:bg-gray-50 flex items-center gap-2.5 text-neutral transition-colors">
+                    <Icon name="file-type-doc" size={16} className="text-blue-500" /> Format DOCX
+                </button>
+            </div>
+        )}
+    </div>
+</div>
+<button onClick={handleSubmit} disabled={isSubmitting || isGenerating} className="w-full py-3.5 bg-gradient-to-r from-primary to-emerald-600 text-white text-[13px] font-bold rounded-xl shadow-md hover:shadow-lg transition-transform active:scale-[0.98] flex justify-center items-center gap-2">
+    <Icon name="send" size={18} /> Kirim & Update ke Sistem
+</button>
+</div>
+</main>
+</div>
+</Fragment>
+);
+};
+
+// --- DAFTAR NASABAH (HISTORY) COMPONENT ---
+const DaftarNasabahPage = ({ title, onBack, onShowDetail, drafts, historyData, onOpenForm }) => {
+const [activeTab, setActiveTab] = useState('history');
+const [searchTerm, setSearchTerm] = useState('');
+const [filterMonth, setFilterMonth] = useState('');
+const [filterYear, setFilterYear] = useState('');
+const [filterCategory, setFilterCategory] = useState(title === 'Semua Form' ? '' : title);
+
+const specificHistory = useMemo(() => {
+    let list = historyData;
+    if(filterCategory) {
+        list = list.filter(h => h.type === filterCategory);
+    }
+    if(searchTerm) {
+        list = list.filter(h => h.name.toLowerCase().includes(searchTerm.toLowerCase()) || (h.no_berkas && h.no_berkas.toLowerCase().includes(searchTerm.toLowerCase())));
+    }
+    if(filterMonth) {
+        list = list.filter(h => h.date.toLowerCase().includes(filterMonth.toLowerCase()));
+    }
+    if(filterYear) {
+        list = list.filter(h => h.date.includes(filterYear));
+    }
+    return list;
+}, [historyData, filterCategory, searchTerm, filterMonth, filterYear]);
+
+return (
+<div className="min-h-screen pb-8 relative z-20">
+<div className="flex items-center px-4 py-3 bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100 shadow-sm">
+<button onClick={onBack} className="w-8 h-8 bg-white border border-gray-200 rounded-full flex items-center justify-center text-primary shadow-sm mr-3 hover:bg-gray-50 transition-colors">
+<Icon name="arrow-left" size={16} />
+</button>
+<div className="flex flex-col">
+<span className="font-bold text-primary text-sm leading-tight">Daftar Nasabah</span>
+<span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">{title}</span>
+</div>
+</div>
+
+<main className="px-4 py-4 max-w-xl mx-auto">
+{title !== 'Semua Form' && (
+<button onClick={() => onOpenForm(null, null, title)} className="w-full bg-gradient-to-r from-primary to-emerald-600 p-4 rounded-xl shadow-md mb-6 flex items-center justify-between active:scale-[0.98] transition-transform text-left">
+<div className="flex items-center gap-3.5">
+<div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center text-white p-2">
+<Icon name="pen-tool" size={20} className="text-white" />
+</div>
+<div className="text-white">
+<h3 className="font-bold text-sm">Input Data Baru</h3>
+<p className="text-[10px] text-white/80 font-medium mt-0.5">Mulai form {title} baru</p>
+</div>
+</div>
+<Icon name="chevron-right" size={20} className="text-white" />
+</button>
+)}
+
+<div className="flex gap-2 mb-4 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
+<button onClick={() => setActiveTab('history')} className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-colors ${activeTab==='history' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}>Riwayat Tersimpan</button>
+<button onClick={() => setActiveTab('drafts')} className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-colors ${activeTab==='drafts' ? 'bg-primary text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}>Draft Offline ({drafts.length})</button>
+</div>
+
+{activeTab === 'history' && (
+    <Fragment>
+        <FilterBar onFilterChange={(type, val) => {
+            if(type === 'search') setSearchTerm(val);
+            if(type === 'category') setFilterCategory(val);
+            if(type === 'month') setFilterMonth(val);
+            if(type === 'year') setFilterYear(val);
+        }} showCategoryFilter={title === 'Semua Form'} />
+        
+        <div className="space-y-3">
+        {specificHistory.length === 0 ? (
+        <div className="text-center py-10 text-gray-400 text-xs font-medium">Tidak ada data nasabah ditemukan.</div>
+        ) : (
+        specificHistory.map((h, i) => {
+            let displayName = h.name;
+            if (h.type === 'LPA' && h.detail_lpa && h.detail_lpa.nama_perumahan) {
+                 displayName = `${h.detail_lpa.nama_perumahan} - ${h.detail_lpa.blok} / ${h.detail_lpa.unit}`;
+            }
+
+            return (
+            <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer hover:border-primary transition-all active:scale-[0.98]" onClick={() => onShowDetail(h)}>
+            <div className="flex items-center gap-3.5 overflow-hidden w-full">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${h.type.includes('Karyawan') ? 'bg-teal-50 text-teal-600 border-teal-100' : (h.type.includes('Usaha') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-lime-50 text-lime-600 border-lime-100')}`}>
+                <Icon name={h.type.includes('Karyawan') ? 'briefcase' : (h.type.includes('Usaha') ? 'store' : 'file-text')} size={18} />
+                </div>
+                <div className="flex-1 min-w-0 pr-2">
+                <div className="flex justify-between items-start w-full mb-1">
+                    <h4 className="font-extrabold text-[13px] text-neutral leading-tight truncate">{displayName}</h4>
+                    <span className="text-[8px] font-bold text-gray-400 uppercase bg-gray-50 px-1.5 py-0.5 rounded ml-2 shrink-0">{h.type}</span>
+                </div>
+                {h.type === 'LPA' ? (
+                    <p className="text-[10px] text-gray-500 truncate w-full font-medium"><Icon name="map-pin" size={10} className="inline mr-0.5 text-primary/50"/> Alamat: {h.lokasi}</p>
+                ) : (
+                    <p className="text-[10px] text-gray-500 truncate w-full font-medium"><Icon name="user" size={10} className="inline mr-0.5 text-primary/50"/> {h.petugas}</p>
+                )}
+                <div className="mt-2 flex gap-1.5 items-center">
+                    <span className="text-[9px] text-primary font-bold bg-green-50 px-2 py-0.5 rounded border border-green-100">No: {h.no_berkas || h.id}</span>
+                    <span className="text-[9px] text-gray-500 font-bold bg-gray-50 px-2 py-0.5 rounded border border-gray-200">{h.date.split(' ')[0]}</span>
+                </div>
+                </div>
+            </div>
+            <Icon name="chevron-right" size={16} className="text-gray-300 shrink-0 ml-1" />
+            </div>
+            )
+        })
+        )}
+        </div>
+    </Fragment>
+)}
+
+{activeTab === 'drafts' && (
+<div className="space-y-3">
+{drafts.length === 0 ? (
+<div className="text-center py-10 text-gray-400 text-xs font-medium">Tidak ada draft tersimpan.</div>
+) : (
+drafts.map(d => (
+<div key={d.id} className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm flex items-center justify-between hover:border-orange-300 transition-all active:scale-[0.98] cursor-pointer" onClick={() => onShowDetail({ id: d.id, type: d.formType, isDraft: true, name: d.name, date: d.date })}>
+<div className="flex items-center gap-3.5">
+<div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500 border border-orange-200 shrink-0">
+    <Icon name="edit" size={18} />
+</div>
+<div>
+<p className="font-extrabold text-[13px] text-neutral">{d.name}</p>
+<p className="text-[10px] text-gray-400 mt-1 font-medium">Draft {d.formType} • {d.date}</p>
+</div>
+</div>
+<Icon name="chevron-right" size={16} className="text-gray-300" />
+</div>
+))
+)}
+</div>
+)}
+</main>
+</div>
+);
+};
+
+const SettingsPage = ({ appSettings, onBack, onSave }) => {
+const [settings, setSettings] = useState(appSettings || {});
+const [isSaving, setIsSaving] = useState(false);
+
+const handleImageUpload = (key, file, maxW = 500) => {
+if (file) compressImage(file, (base64) => setSettings(prev => ({ ...prev, [key]: base64 })), maxW);
+};
+
+const handleSave = () => {
+setIsSaving(true);
+if (typeof google !== 'undefined' && google.script) {
+google.script.run.withSuccessHandler((res) => { setIsSaving(false); alert(res.message); onSave(settings); }).saveSettings(JSON.stringify(settings));
+} else {
+setTimeout(() => { setIsSaving(false); alert("Tersimpan"); onSave(settings); }, 500);
+}
+};
+
+const handleResetTheme = () => {
+    if(confirm("Apakah Anda yakin ingin mengatur ulang tema ke warna asli?")) {
+        setSettings(prev => {
+            const newS = {...prev};
+            delete newS.theme_primary;
+            delete newS.theme_bg;
+            delete newS.theme_bg_image;
+            return newS;
+        });
+    }
+};
+
+const SettingUploader = ({ label, settingKey, fallbackIcon, isBg = false }) => (
+<div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-3 flex items-center justify-between">
+<div className="flex items-center gap-3.5">
+<div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden border border-gray-200 shrink-0 p-1">
+<CustomImage src={settings[settingKey]} fallbackIcon={fallbackIcon} size={24} className="text-primary" />
+</div>
+<div>
+<h4 className="font-bold text-xs text-neutral">{label}</h4>
+</div>
+</div>
+<label className="text-[10px] bg-secondary text-primary font-bold px-3.5 py-2.5 rounded-lg cursor-pointer hover:bg-green-100 text-center whitespace-nowrap transition-colors">
+Ubah <input type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(settingKey, e.target.files[0], isBg ? 1200 : 500)} />
+</label>
+</div>
+);
+
+return (
+<div className="min-h-screen bg-transparent relative z-20">
+<div className="flex items-center px-4 py-3 bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100 shadow-sm">
+<button onClick={onBack} className="w-8 h-8 bg-white border border-gray-200 rounded-full flex items-center justify-center text-primary shadow-sm mr-3 hover:bg-gray-50">
+<Icon name="arrow-left" size={16} />
+</button>
+<span className="font-bold text-primary text-sm">Pengaturan UI</span>
+</div>
+<main className="px-4 py-5 max-w-xl mx-auto">
+<div className="mb-6 space-y-3">
+    <h3 className="font-extrabold text-neutral text-sm mb-3">Tampilan & Tema</h3>
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+        <label className="font-bold text-xs text-neutral flex items-center gap-2 mb-3"><Icon name="palette" size={16} className="text-primary"/> Tema Utama Aplikasi</label>
+        <div className="flex gap-3 items-center">
+            <input type="color" className="w-12 h-12 rounded-lg cursor-pointer border-0 p-0 shadow-inner" value={settings.theme_primary || '#059669'} onChange={e => setSettings(prev => ({...prev, theme_primary: e.target.value}))} />
+            <span className="text-[10px] text-gray-500 flex-1 leading-tight font-medium">Mengubah warna tombol, header, dan elemen aktif di seluruh aplikasi.</span>
+        </div>
+    </div>
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+        <label className="font-bold text-xs text-neutral flex items-center gap-2 mb-3"><Icon name="monitor" size={16} className="text-primary"/> Warna Latar Belakang</label>
+        <div className="flex gap-3 items-center">
+            <input type="color" className="w-12 h-12 rounded-lg cursor-pointer border-0 p-0 shadow-inner" value={settings.theme_bg || '#F8FAFC'} onChange={e => setSettings(prev => ({...prev, theme_bg: e.target.value}))} />
+            <span className="text-[10px] text-gray-500 flex-1 leading-tight font-medium">Latar belakang dasar untuk seluruh halaman aplikasi.</span>
+        </div>
+    </div>
+    <SettingUploader label="Gambar Background" settingKey="theme_bg_image" fallbackIcon="image" isBg={true} />
+    
+    <button onClick={handleResetTheme} className="w-full py-2.5 bg-orange-50 text-orange-700 text-xs font-bold rounded-xl border border-orange-200 flex justify-center items-center gap-2 hover:bg-orange-100 transition-colors shadow-sm mt-2">
+        <Icon name="refresh-ccw" size={14} /> Reset Warna & Tema ke Default
+    </button>
+</div>
+
+<h3 className="font-extrabold text-neutral text-sm mb-3 mt-6">Ikon & Logo</h3>
+<SettingUploader label="Logo Aplikasi Utama" settingKey="logo_app" fallbackIcon="shield" />
+<SettingUploader label="Ikon Menu: OTS Karyawan" settingKey="icon_karyawan" fallbackIcon="briefcase" />
+<SettingUploader label="Ikon Menu: OTS Usaha" settingKey="icon_usaha" fallbackIcon="store" />
+<SettingUploader label="Ikon Menu: LPA" settingKey="icon_lpa" fallbackIcon="file-text" />
+
+<button onClick={handleSave} disabled={isSaving} className="w-full py-4 bg-gradient-to-r from-primary to-emerald-600 text-white text-[13px] font-bold rounded-xl mt-6 shadow-lg hover:shadow-xl transition-transform active:scale-[0.98] flex justify-center items-center gap-2">
+{isSaving ? <Fragment><Icon name="loader" className="animate-spin" size={16} />Menyimpan Pengaturan...</Fragment> : <Fragment><Icon name="save" size={16} />Simpan Semua Pengaturan</Fragment>}
+</button>
+</main>
+</div>
+);
+};
+
+const App = () => {
+const [route, setRoute] = useState('home');
+const [selectedMenu, setSelectedMenu] = useState(null);
+const [appSettings, setAppSettings] = useState({});
+const [historyData, setHistoryData] = useState([]);
+const [dropdownData, setDropdownData] = useState({});
+const [showNotif, setShowNotif] = useState(false);
+const [editDraftId, setEditDraftId] = useState(null);
+const [editHistoryId, setEditHistoryId] = useState(null);
+const [detailItem, setDetailItem] = useState(null); 
+const [totalDrafts, setTotalDrafts] = useState(0);
+
+const fetchData = () => {
+IDB.getDrafts().then(d => setTotalDrafts(d.length));
+if(typeof google !== 'undefined' && google.script) {
+google.script.run.withSuccessHandler(data => {
+    setAppSettings(data || {});
+}).getSettings();
+google.script.run.withSuccessHandler(data => setHistoryData(data || [])).getHistory();
+google.script.run.withSuccessHandler(data => setDropdownData(data || {})).getDropdownData();
+} else {
+setHistoryData([
+{type: 'OTS Karyawan', id: '123-Mock', no_berkas: '001/LPA/MDN', name: 'Andi Subagyo', date: '21/10/2023', petugas: 'Budi M', lokasi: 'Jl. Sudirman 123 \n\nLink Maps: https://www.google.com/maps?q=3.59,98.67'},
+{type: 'OTS Usaha', id: '124-Mock', no_berkas: '002/OTS/MDN', name: 'Toko Makmur Jaya', date: '21/10/2023', petugas: 'Siti R', lokasi: 'Pasar Petisah, Medan \n\nLink Maps: https://www.google.com/maps?q=3.58,98.68'},
+{type: 'LPA', id: '125-Mock', no_berkas: '003/LPA/MDN', name: 'Perumahan Asri', date: '20/10/2023', petugas: 'Budi M', lokasi: 'Citra Garden Indah-Blok A12\n\nLink Maps: https://www.google.com/maps?q=3.60,98.65', detail_lpa: {nama_perumahan: 'Citra Garden Indah', blok: 'A12', unit: '10'}},
+]);
+setDropdownData({
+    'Bentuk_Badan_Usaha': ['Usaha Perseorangan / UD', 'CV (Commanditaire Vennootschap)'],
+    'Layak_Huni_LPA': ['Layak Huni', 'Kurang Layak Huni', 'Tidak Layak Huni'],
+    'Listrik_LPA': ['PLN', '900 Watt', '1.300 Watt'],
+    'Spek_Jalan_Utama': ['Beton', 'Paving Block', 'Pengerasan', 'Belum Terbentuk']
+});
+}
+};
+
+useEffect(() => { fetchData(); }, []);
+
+const goHome = () => { setRoute('home'); setEditDraftId(null); setEditHistoryId(null); fetchData(); };
+const goSubMenu = (menu) => { setSelectedMenu(menu); setRoute('submenu'); };
+const goForm = (draftId = null, historyId = null, overrideMenu = null) => { 
+    if(overrideMenu) setSelectedMenu(overrideMenu);
+    setEditDraftId(draftId); 
+    setEditHistoryId(historyId); 
+    setRoute('form'); 
+};
+const goSettings = () => setRoute('settings');
+const goDaftarNasabah = (menu) => { setSelectedMenu(menu); setRoute('daftar'); };
+
+const handleFormSubmitSuccess = (submittedData, formType) => {
+    fetchData(); 
+    const submitId = formType === 'LPA' ? submittedData.LPA_ID : submittedData.Observasi_ID;
+    const noBerkas = formType === 'LPA' ? submittedData.No_LPA : submittedData.Observasi_ID;
+    const loc = submittedData.Alamat_Perumahan || submittedData.Alamat_Tempat_Usaha || submittedData.Alamat_Perusahaan || '-';
+    const mockItem = {
+        id: submitId,
+        type: formType,
+        no_berkas: noBerkas,
+        name: submittedData.Nama_Nasabah,
+        date: new Date().toLocaleDateString('id-ID'),
+        petugas: submittedData.Nama_Petugas || '-',
+        lokasi: loc
+    };
+    setSelectedMenu(formType);
+    setRoute('daftar'); 
+    setDetailItem(mockItem); 
+};
+
+const safeSettings = appSettings || {};
+const safeHistory = historyData || [];
+const defaultLogoUrl = "https://lh3.googleusercontent.com/d/1y2UjnKau1siZO4lN_BDN4ttrIYeFqpCQ";
+
+const countKaryawan = safeHistory.filter(h => h.type === 'OTS Karyawan').length;
+const countUsaha = safeHistory.filter(h => h.type === 'OTS Usaha').length;
+const countLPA = safeHistory.filter(h => h.type === 'LPA').length;
+const countToday = safeHistory.filter(h => h.date.split(' ')[0] === new Date().toLocaleDateString('id-ID').split(' ')[0]).length;
+
+return (
+<div className="pb-8 min-h-screen transition-colors duration-300">
+<style dangerouslySetInnerHTML={{__html: `
+    :root {
+        --color-primary: ${safeSettings.theme_primary || '#059669'};
+        --color-bg: ${safeSettings.theme_bg || '#F8FAFC'};
+    }
+    body { 
+        background-color: var(--color-bg); 
+        ${safeSettings.theme_bg_image ? `background-image: url('${safeSettings.theme_bg_image}'); background-size: cover; background-attachment: fixed; background-position: center center;` : ''}
+    }
+`}} />
+
+{route === 'settings' && <SettingsPage appSettings={safeSettings} onBack={goHome} onSave={(s) => { setAppSettings(s || {}); goHome(); }} />}
+{route === 'form' && <FormPage formType={selectedMenu} initialDraftId={editDraftId} initialHistoryId={editHistoryId} dropdownData={dropdownData} onBack={() => goDaftarNasabah(selectedMenu)} onSubmitSuccess={handleFormSubmitSuccess} logoApp={safeSettings.logo_app || defaultLogoUrl} />}
+{route === 'daftar' && (
+    <Fragment>
+        <DaftarNasabahPage title={selectedMenu} onBack={goHome} onShowDetail={(item) => setDetailItem(item)} drafts={[]} historyData={historyData || []} onOpenForm={goForm} />
+        <CustomerDetailModal item={detailItem} onClose={() => setDetailItem(null)} onEdit={(id, type) => { setDetailItem(null); setSelectedMenu(type); goForm(null, id); }} onRefresh={fetchData} />
+    </Fragment>
+)}
+
+{route === 'home' && (
+<Fragment>
+<div className="bg-gradient-to-br from-primary to-emerald-800 pt-6 pb-20 px-5 rounded-b-[2.5rem] shadow-lg relative z-10">
+    <div className="flex items-center justify-between relative z-20">
+        <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center font-bold shadow-md overflow-hidden p-0.5 border-2 border-white/80 shrink-0">
+                <img src={safeSettings.logo_app || defaultLogoUrl} className="w-full h-full object-cover rounded-full" alt="Logo Aplikasi" />
+            </div>
+            <div className="text-white drop-shadow-sm">
+                <h1 className="font-extrabold text-base leading-tight tracking-tight">Aplikasi OTS & LPA</h1>
+                <p className="text-[9px] font-bold tracking-widest uppercase opacity-90 mt-0.5">Kantor Cabang Medan</p>
+            </div>
+        </div>
+        <div className="flex gap-2">
+            <button onClick={() => setShowNotif(!showNotif)} className="w-9 h-9 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white relative hover:bg-white/30 transition-colors">
+                {(totalDrafts > 0 || countToday > 0) && <span className="w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-primary absolute top-0 right-0"></span>}
+                <Icon name="bell" size={16} />
+            </button>
+            <button onClick={goSettings} className="w-9 h-9 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white/30 transition-colors">
+                <Icon name="settings" size={16} />
+            </button>
+        </div>
+    </div>
+</div>
+
+{showNotif && (
+<div className="absolute top-20 right-5 w-64 bg-white shadow-2xl border border-gray-100 rounded-2xl p-4 z-50 animate-fade-in">
+<div className="flex justify-between items-center mb-3 border-b border-gray-100 pb-2">
+<h4 className="font-extrabold text-xs text-neutral">Pemberitahuan</h4>
+<button onClick={() => setShowNotif(false)} className="text-gray-400 hover:text-red-500"><Icon name="x" size={16} /></button>
+</div>
+<div className="space-y-2.5">
+<div className="flex gap-2.5 items-start bg-orange-50 p-2.5 rounded-xl border border-orange-100">
+<Icon name="alert-circle" size={14} className="text-orange-500 mt-0.5 shrink-0" />
+<p className="text-[10px] text-gray-700 leading-tight font-medium">Terdapat <b>{totalDrafts}</b> draft offline yang belum dikirim ke sistem.</p>
+</div>
+<div className="flex gap-2.5 items-start bg-green-50 p-2.5 rounded-xl border border-green-100">
+<Icon name="check-circle" size={14} className="text-primary mt-0.5 shrink-0" />
+<p className="text-[10px] text-gray-700 leading-tight font-medium">Anda dan tim telah berhasil menginput <b>{countToday}</b> berkas hari ini.</p>
+</div>
+</div>
+</div>
+)}
+
+<main className="px-4 -mt-10 relative z-20 max-w-xl mx-auto">
+    
+<div className="grid grid-cols-3 gap-2.5 mb-6">
+    <button onClick={() => goDaftarNasabah('OTS Karyawan')} className="bg-white rounded-2xl shadow-md border border-gray-100 p-3 flex flex-col items-center justify-center text-center cursor-pointer hover:border-primary transition-colors active:scale-95">
+        <div className="w-8 h-8 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center mb-1.5 shadow-inner"><Icon name="briefcase" size={14} /></div>
+        <h4 className="font-extrabold text-lg text-neutral">{countKaryawan}</h4>
+        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wide">Karyawan</p>
+    </button>
+    <button onClick={() => goDaftarNasabah('OTS Usaha')} className="bg-white rounded-2xl shadow-md border border-gray-100 p-3 flex flex-col items-center justify-center text-center cursor-pointer hover:border-primary transition-colors active:scale-95">
+        <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-1.5 shadow-inner"><Icon name="store" size={14} /></div>
+        <h4 className="font-extrabold text-lg text-neutral">{countUsaha}</h4>
+        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wide">Usaha</p>
+    </button>
+    <button onClick={() => goDaftarNasabah('LPA')} className="bg-white rounded-2xl shadow-md border border-gray-100 p-3 flex flex-col items-center justify-center text-center cursor-pointer hover:border-primary transition-colors active:scale-95">
+        <div className="w-8 h-8 rounded-full bg-lime-50 text-lime-600 flex items-center justify-center mb-1.5 shadow-inner"><Icon name="file-text" size={14} /></div>
+        <h4 className="font-extrabold text-lg text-neutral">{countLPA}</h4>
+        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wide">LPA Agunan</p>
+    </button>
+</div>
+
+<h3 className="font-extrabold text-sm text-neutral mb-3 flex items-center gap-1.5 ml-1 bg-white/80 backdrop-blur px-2.5 py-1.5 rounded-lg w-max shadow-sm"><Icon name="grid" size={16} className="text-primary"/> Modul Utama</h3>
+
+<div className="grid grid-cols-2 gap-3 mb-6">
+    <button onClick={() => { setSelectedMenu('OTS Karyawan'); setRoute('form'); }} className="flex flex-col items-center justify-center gap-2 p-4 bg-white/95 backdrop-blur rounded-2xl shadow-sm border border-gray-100 active:scale-[0.98] transition-transform hover:border-primary">
+        <CustomImage src={safeSettings.icon_karyawan} fallbackIcon="briefcase" size={32} className="text-teal-600 drop-shadow-sm" />
+        <span className="font-bold text-[11px] text-neutral text-center">Input<br/>OTS Karyawan</span>
+    </button>
+    <button onClick={() => { setSelectedMenu('OTS Usaha'); setRoute('form'); }} className="flex flex-col items-center justify-center gap-2 p-4 bg-white/95 backdrop-blur rounded-2xl shadow-sm border border-gray-100 active:scale-[0.98] transition-transform hover:border-primary">
+        <CustomImage src={safeSettings.icon_usaha} fallbackIcon="store" size={32} className="text-emerald-600 drop-shadow-sm" />
+        <span className="font-bold text-[11px] text-neutral text-center">Input<br/>OTS Usaha</span>
+    </button>
+    <button onClick={() => { setSelectedMenu('LPA'); setRoute('form'); }} className="flex flex-col items-center justify-center gap-2 p-4 bg-white/95 backdrop-blur rounded-2xl shadow-sm border border-gray-100 active:scale-[0.98] transition-transform hover:border-primary">
+        <CustomImage src={safeSettings.icon_lpa} fallbackIcon="file-text" size={32} className="text-lime-600 drop-shadow-sm" />
+        <span className="font-bold text-[11px] text-neutral text-center">Input<br/>LPA Agunan</span>
+    </button>
+    <button onClick={() => goDaftarNasabah('Semua Form')} className="flex flex-col items-center justify-center gap-2 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm border border-blue-100 active:scale-[0.98] transition-transform hover:border-blue-300">
+        <Icon name="users" size={32} className="text-blue-600 drop-shadow-sm" />
+        <span className="font-bold text-[11px] text-blue-900 text-center">Daftar<br/>Semua Nasabah</span>
+    </button>
+</div>
+
+<h3 className="font-extrabold text-sm text-neutral mb-3 flex items-center gap-1.5 ml-1 bg-white/80 backdrop-blur px-2.5 py-1.5 rounded-lg w-max shadow-sm"><Icon name="map" size={16} className="text-primary"/> Jangkauan Survey Peta</h3>
+<MapComponent historyData={safeHistory} />
+
+<div className="h-10"></div>
+</main>
+</Fragment>
+)}
+</div>
+);
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(registration => {
+          console.log('ServiceWorker sukses didaftarkan dengan scope: ', registration.scope);
+        })
+        .catch(err => {
+          console.log('Pendaftaran ServiceWorker gagal: ', err);
+        });
+    });
+  }
+</script>
+</body>
+</html>
