@@ -53,7 +53,7 @@ theme: { extend: { colors: { primary: 'var(--color-primary, #059669)', secondary
 <script>
 if (typeof google === 'undefined') {
     // KELAK JIKA BACKEND GAS SUDAH DEPLOY, GANTI URL DI BAWAH INI
-    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwZRO5597U5J9LCLOwhlLkXk3MvwSZRO2HvsHiX9gLySzYFpiuk2KATvVGQcOgLIfKV7A/exec";
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwrsGgaxxtCf7-PR8g1DNYonVo0UsUGp2gaVLzjMlRLvm8oNaGibchra_9pY_wlSyHsaA/exec";
     
     const createRunner = (successCb, failureCb) => {
         return {
@@ -62,7 +62,7 @@ if (typeof google === 'undefined') {
             withSuccessHandler: function(cb) { return createRunner(cb, this._failure); },
             withFailureHandler: function(cb) { return createRunner(this._success, cb); },
             _call: function(name, args) {
-                if (GAS_WEB_APP_URL === "https://script.google.com/macros/s/AKfycbwZRO5597U5J9LCLOwhlLkXk3MvwSZRO2HvsHiX9gLySzYFpiuk2KATvVGQcOgLIfKV7A/exec") {
+                if (GAS_WEB_APP_URL === "https://script.google.com/macros/s/AKfycbwrsGgaxxtCf7-PR8g1DNYonVo0UsUGp2gaVLzjMlRLvm8oNaGibchra_9pY_wlSyHsaA/exec") {
                     console.log(`[Mode Lokal Vercel] Bypass Fungsi: ${name}`);
                     // Fallback simulasi agar UI tidak loading terus saat di Vercel pertama kali
                     setTimeout(() => { if (this._success) this._success(); }, 500);
