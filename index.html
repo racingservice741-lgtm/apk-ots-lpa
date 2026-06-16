@@ -95,7 +95,9 @@ if (typeof google === 'undefined') {
 <body>
 <div id="root"></div>
 
-<script type="text/babel" data-type="module" data-presets="react">
+<script type="text/babel">
+/** @jsx React.createElement */
+/** @jsxFrag React.Fragment */
 const { useState, useEffect, useRef, Fragment, useMemo } = React;
 
 const safeStorage = {
