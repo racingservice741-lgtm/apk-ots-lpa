@@ -599,9 +599,20 @@ const handleGenerateFromModal = (formatType) => {
 };
 
 const openPreview = (url) => {
-    let pUrl = url.replace(/\/edit.*$/, '/preview').replace(/\/view.*$/, '/preview');
-    if(!pUrl.includes('preview')) pUrl += '/preview';
-    setPreviewUrl(pUrl);
+    if (!url) return;
+    
+    // Mengekstrak ID unik Google Drive dari URL
+    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    
+    if (match && match[1]) {
+        // Membentuk URL Preview yang 100% bersih tanpa parameter cacat
+        setPreviewUrl(`https://drive.google.com/file/d/${match[1]}/preview`);
+    } else {
+        // Fallback cadangan
+        let pUrl = url.replace(/\/edit.*$/, '/preview').replace(/\/view.*$/, '/preview');
+        if(!pUrl.includes('preview')) pUrl += '/preview';
+        setPreviewUrl(pUrl);
+    }
 };
 
 const handleShareDoc = async (url) => {
