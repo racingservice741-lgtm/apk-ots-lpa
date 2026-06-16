@@ -19,7 +19,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
 
@@ -96,8 +96,6 @@ if (typeof google === 'undefined') {
 <div id="root"></div>
 
 <script type="text/babel">
-/** @jsx React.createElement */
-/** @jsxFrag React.Fragment */
 const { useState, useEffect, useRef, Fragment, useMemo } = React;
 
 const safeStorage = {
