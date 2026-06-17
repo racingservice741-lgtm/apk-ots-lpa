@@ -1561,7 +1561,7 @@ return (
 <div className="text-center py-10 text-gray-400 text-xs font-medium">Tidak ada draft tersimpan.</div>
 ) : (
 drafts.map(d => (
-<div key={d.id} className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm flex items-center justify-between hover:border-orange-300 transition-all active:scale-[0.98] cursor-pointer" onClick={() => onShowDetail({ id: d.id, type: d.formType, isDraft: true, name: d.name, date: d.date })}>
+<div key={d.id} className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm flex items-center justify-between hover:border-orange-300 transition-all active:scale-[0.98] cursor-pointer" onClick={() => onOpenForm(d.id, null, d.formType)}>
 <div className="flex items-center gap-3.5">
 <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500 border border-orange-200 shrink-0">
     <Icon name="edit" size={18} />
