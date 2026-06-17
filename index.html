@@ -1690,25 +1690,28 @@ const fetchData = () => {
   IDB.getDrafts().then(d => {
       setTotalDrafts(d.length);
       setOfflineDrafts(d);    
-if(typeof google !== 'undefined' && google.script) {
-google.script.run.withSuccessHandler(data => {
-    setAppSettings(data || {});
-}).getSettings();
-google.script.run.withSuccessHandler(data => setHistoryData(data || [])).getHistory();
-google.script.run.withSuccessHandler(data => setDropdownData(data || {})).getDropdownData();
-} else {
-setHistoryData([
-{type: 'OTS Karyawan', id: '123-Mock', no_berkas: '001/LPA/MDN', name: 'Andi Subagyo', date: '21/10/2023', petugas: 'Budi M', lokasi: 'Jl. Sudirman 123 \n\nLink Maps: https://www.google.com/maps?q=3.59,98.67'},
-{type: 'OTS Usaha', id: '124-Mock', no_berkas: '002/OTS/MDN', name: 'Toko Makmur Jaya', date: '21/10/2023', petugas: 'Siti R', lokasi: 'Pasar Petisah, Medan \n\nLink Maps: https://www.google.com/maps?q=3.58,98.68'},
-{type: 'LPA', id: '125-Mock', no_berkas: '003/LPA/MDN', name: 'Perumahan Asri', date: '20/10/2023', petugas: 'Budi M', lokasi: 'Citra Garden Indah-Blok A12\n\nLink Maps: https://www.google.com/maps?q=3.60,98.65', detail_lpa: {nama_perumahan: 'Citra Garden Indah', blok: 'A12', unit: '10'}},
-]);
-setDropdownData({
-    'Bentuk_Badan_Usaha': ['Usaha Perseorangan / UD', 'CV (Commanditaire Vennootschap)'],
-    'Layak_Huni_LPA': ['Layak Huni', 'Kurang Layak Huni', 'Tidak Layak Huni'],
-    'Listrik_LPA': ['PLN', '900 Watt', '1.300 Watt'],
-    'Spek_Jalan_Utama': ['Beton', 'Paving Block', 'Pengerasan', 'Belum Terbentuk']
-});
-}
+  }); // <--- INI PENUTUP YANG HILANG SEBELUMNYA
+
+  if(typeof google !== 'undefined' && google.script) {
+    google.script.run.withSuccessHandler(data => {
+        setAppSettings(data || {});
+    }).getSettings();
+    google.script.run.withSuccessHandler(data => setHistoryData(data || [])).getHistory();
+    google.script.run.withSuccessHandler(data => setDropdownData(data || {})).getDropdownData();
+  } else {
+    setHistoryData([
+      {type: 'OTS Karyawan', id: '123-Mock', no_berkas: '001/LPA/MDN', name: 'Andi Subagyo', date: '21/10/2023', petugas: 'Budi M', lokasi: 'Jl. Sudirman 123 \n\nLink Maps: https://www.google.com/maps?q=3.59,98.67'},
+      {type: 'OTS Usaha', id: '124-Mock', no_berkas: '002/OTS/MDN', name: 'Toko Makmur Jaya', date: '21/10/2023', petugas: 'Siti R', lokasi: 'Pasar Petisah, Medan \n\nLink Maps: https://www.google.com/maps?q=3.58,98.68'},
+      {type: 'LPA', id: '125-Mock', no_berkas: '003/LPA/MDN', name: 'Perumahan Asri', date: '20/10/2023', petugas: 'Budi M', lokasi: 'Citra Garden Indah-Blok A12\n\nLink Maps: https://www.google.com/maps?q=3.60,98.65', detail_lpa: {nama_perumahan: 'Citra Garden Indah', blok: 'A12', unit: '10'}},
+    ]);
+    setDropdownData({
+        'Bentuk_Badan_Usaha': ['Usaha Perseorangan / UD', 'CV (Commanditaire Vennootschap)'],
+        'Layak_Huni_LPA': ['Layak Huni', 'Kurang Layak Huni', 'Tidak Layak Huni'],
+        'Listrik_LPA': ['PLN', '900 Watt', '1.300 Watt'],
+        'Spek_Jalan_Utama': ['Beton', 'Paving Block', 'Pengerasan', 'Belum Terbentuk']
+    });
+  }
+}; // <--- INI JUGA PENUTUP FUNGSI YANG HILANG SEBELUMNYA
 
 useEffect(() => { 
     fetchData(); 
