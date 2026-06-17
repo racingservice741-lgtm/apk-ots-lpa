@@ -87,58 +87,15 @@ if (typeof google === 'undefined') {
 
 </head>
 <body>
-<div id="root">
-  <style>
-    .initial-loader-wrapper {
-      position: fixed;
-      top: 0; left: 0; width: 100vw; height: 100vh;
-      background-color: #F8FAFC; /* Sesuai warna background aplikasi Anda */
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Inter', sans-serif;
-      z-index: 999999;
-    }
-    .spinner-ring {
-      width: 50px;
-      height: 50px;
-      border: 4px solid #E8F5E9; /* Warna hijau super muda */
-      border-top: 4px solid #059669; /* Warna primary hijau Anda */
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 20px;
-    }
-    .loading-title {
-      color: #059669;
-      font-size: 14px;
-      font-weight: 800;
-      letter-spacing: 1px;
-      animation: pulse 1.5s infinite;
-    }
-    .loading-subtitle {
-      color: #9CA3AF;
-      font-size: 10px;
-      font-weight: 600;
-      margin-top: 8px;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-  </style>
-
-  <div class="initial-loader-wrapper">
-    <div class="spinner-ring"></div>
-    <div class="loading-title">MEMUAT APLIKASI KC MEDAN</div>
-    <div class="loading-subtitle">Sistem Loading, Please Wait...</div>
+  <div id="loading-awal" style="position: fixed; inset: 0; background-color: #F8FAFC; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999999; font-family: 'Inter', sans-serif; transition: opacity 0.5s ease;">
+    <div style="width: 50px; height: 50px; border: 4px solid #E8F5E9; border-top: 4px solid #059669; border-radius: 50%; animation: muter 1s linear infinite; margin-bottom: 20px;"></div>
+    <h2 style="color: #059669; font-size: 16px; font-weight: 800; margin: 0; letter-spacing: 1px;">APLIKASI KC MEDAN</h2>
+    <p style="color: #9CA3AF; font-size: 11px; margin-top: 8px; font-weight: 600;">System Preparing...</p>
   </div>
-</div>
+  <style>@keyframes muter { 100% { transform: rotate(360deg); } }</style>
 
+  <div id="root"></div>
+    
 <script type="text/babel">
 const { useState, useEffect, useRef, Fragment, useMemo } = React;
 
@@ -1751,7 +1708,17 @@ setDropdownData({
 }
 };
 
-useEffect(() => { fetchData(); }, []);
+useEffect(() => { 
+    fetchData(); 
+    // Hapus loading screen secara halus setelah React dan data siap
+    setTimeout(() => {
+        const loader = document.getElementById('loading-awal');
+        if (loader) {
+            loader.style.opacity = '0';
+            setTimeout(() => loader.style.display = 'none', 500);
+        }
+    }, 500);
+}, []);
 
 const goHome = () => { setRoute('home'); setEditDraftId(null); setEditHistoryId(null); fetchData(); };
 const goSubMenu = (menu) => { setSelectedMenu(menu); setRoute('submenu'); };
