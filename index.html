@@ -1684,9 +1684,12 @@ const [editDraftId, setEditDraftId] = useState(null);
 const [editHistoryId, setEditHistoryId] = useState(null);
 const [detailItem, setDetailItem] = useState(null); 
 const [totalDrafts, setTotalDrafts] = useState(0);
+const [offlineDrafts, setOfflineDrafts] = useState([]);
 
 const fetchData = () => {
-IDB.getDrafts().then(d => setTotalDrafts(d.length));
+  IDB.getDrafts().then(d => {
+      setTotalDrafts(d.length);
+      setOfflineDrafts(d);    
 if(typeof google !== 'undefined' && google.script) {
 google.script.run.withSuccessHandler(data => {
     setAppSettings(data || {});
@@ -1776,7 +1779,15 @@ return (
 {route === 'form' && <FormPage formType={selectedMenu} initialDraftId={editDraftId} initialHistoryId={editHistoryId} dropdownData={dropdownData} onBack={() => goDaftarNasabah(selectedMenu)} onSubmitSuccess={handleFormSubmitSuccess} logoApp={safeSettings.logo_app || defaultLogoUrl} />}
 {route === 'daftar' && (
     <Fragment>
-        <DaftarNasabahPage title={selectedMenu} onBack={goHome} onShowDetail={(item) => setDetailItem(item)} drafts={[]} historyData={historyData || []} onOpenForm={goForm} />
+        {/* Mengirimkan data draft yang sudah disaring sesuai menu yang dipilih */}
+        <DaftarNasabahPage 
+            title={selectedMenu} 
+            onBack={goHome} 
+            onShowDetail={(item) => setDetailItem(item)} 
+            drafts={offlineDrafts.filter(d => selectedMenu === 'Semua Form' || d.formType === selectedMenu)} 
+            historyData={historyData || []} 
+            onOpenForm={goForm} 
+        />
         <CustomerDetailModal item={detailItem} onClose={() => setDetailItem(null)} onEdit={(id, type) => { setDetailItem(null); setSelectedMenu(type); goForm(null, id); }} onRefresh={fetchData} />
     </Fragment>
 )}
