@@ -87,7 +87,57 @@ if (typeof google === 'undefined') {
 
 </head>
 <body>
-<div id="root"></div>
+<div id="root">
+  <style>
+    .initial-loader-wrapper {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background-color: #F8FAFC; /* Sesuai warna background aplikasi Anda */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Inter', sans-serif;
+      z-index: 999999;
+    }
+    .spinner-ring {
+      width: 50px;
+      height: 50px;
+      border: 4px solid #E8F5E9; /* Warna hijau super muda */
+      border-top: 4px solid #059669; /* Warna primary hijau Anda */
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    .loading-title {
+      color: #059669;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      animation: pulse 1.5s infinite;
+    }
+    .loading-subtitle {
+      color: #9CA3AF;
+      font-size: 10px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+
+  <div class="initial-loader-wrapper">
+    <div class="spinner-ring"></div>
+    <div class="loading-title">MEMUAT APLIKASI KC MEDAN</div>
+    <div class="loading-subtitle">Sistem Loading, Please Wait...</div>
+  </div>
+</div>
 
 <script type="text/babel">
 const { useState, useEffect, useRef, Fragment, useMemo } = React;
