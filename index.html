@@ -356,7 +356,7 @@ const formsConfig = {
 { name: 'Jumlah_Angsuran_Lain', label: 'Jumlah Angsuran Lain', type: 'number' },
 ]},
 { section: 'V. Validasi', fields: [
-{ name: 'Validasi_Pekerjaan_Nasabah', label: 'Validasi Pekerjaan Nasabah', type: 'select', dropdownKey: 'Validasi_Pekerjaan_Nasabah', required: true },
+{ name: 'Validasi_Pekerjaan_Nasabah', label: 'Validasi Pekerjaan Nasabah', type: 'select', dropdownKey: 'Validasi_Pekerjaan_Nasabah' },
 { name: 'Jabatan_Nasabah_Validasi', label: 'Jabatan Nasabah Validasi', type: 'text' },
 { name: 'Catatan_Tambahan', label: 'Catatan Tambahan', type: 'textarea' },
 ]},
@@ -427,7 +427,7 @@ const formsConfig = {
 { name: 'Prospek_Usaha', label: 'Prospek Usaha', type: 'select', dropdownKey: 'Prospek_Usaha' },
 ]},
 { section: 'V. Validasi', fields: [
-{ name: 'Validasi_Usaha_Nasabah', label: 'Validasi Usaha Nasabah', type: 'select', dropdownKey: 'Validasi_Usaha_Nasabah', required: true },
+{ name: 'Validasi_Usaha_Nasabah', label: 'Validasi Usaha Nasabah', type: 'select', dropdownKey: 'Validasi_Usaha_Nasabah' },
 { name: 'Catatan_Lainnya', label: 'Catatan Lainnya', type: 'textarea' },
 { name: 'Catatan_Khusus', label: 'Catatan Khusus', type: 'textarea' },
 ]},
@@ -460,11 +460,11 @@ const formsConfig = {
 { name: 'No_Unit', label: 'No Unit', type: 'text' },
 { name: 'Tipe_Produk', label: 'Tipe Produk', type: 'select', dropdownKey: 'Tipe_Produk', required: true },
 { name: 'Tanggal_Order', label: 'Tanggal Order', type: 'date' },
-{ name: 'Tanggal_Survey', label: 'Tanggal Survey', type: 'date', required: true },
+{ name: 'Tanggal_Survey', label: 'Tanggal Survey', type: 'date' },
 { name: 'No_Surat_Penugasan', label: 'No Surat Penugasan', type: 'text' },
 { name: 'Tgl_Surat_Penugasan', label: 'Tgl Surat Penugasan', type: 'date' },
 { name: 'Objek_Agunan', label: 'Objek Agunan', type: 'select', dropdownKey: 'Objek_Agunan', required: true },
-{ name: 'Nama_Nasabah', label: 'Nama Nasabah', type: 'text', required: true },
+{ name: 'Nama_Nasabah', label: 'Nama Nasabah', type: 'text' },
 ]},
 { section: 'II. Dokumentasi Foto', fields: [
 { name: 'Foto_Tampak_Depan', label: 'Foto Tampak Depan', type: 'photo', required: true },
@@ -489,7 +489,7 @@ const formsConfig = {
 { name: 'Catatan', label: 'Catatan', type: 'textarea' },
 ]},
 { section: 'IV. Pengesahan', fields: [
-{ name: 'Nama_Petugas', label: 'Nama Petugas', type: 'text', required: true },
+{ name: 'Nama_Petugas', label: 'Nama Petugas', type: 'text' },
 { name: 'Jabatan_Petugas', label: 'Jabatan Petugas', type: 'select', dropdownKey: 'Jabatan_Petugas', required: true },
 { name: 'Tanda_Tangan_Petugas', label: 'Tanda Tangan Petugas', type: 'signature', required: true },
 { name: 'Nama_Atasan_1', label: 'Nama Atasan 1', type: 'text' },
@@ -900,100 +900,218 @@ return (
 };
 
 const PhotoInput = ({ label, value, onChange, required, logoApp }) => {
-const [isProcessing, setIsProcessing] = useState(false);
-const borderClass = value ? 'border-primary/40 bg-green-50/10 border-solid' : (required ? 'border-orange-300 bg-orange-50/20 border-dashed' : 'border-primary/30 border-dashed bg-[#FAFAFA]');
-const fileInputRef = useRef(null);
-const fileGalleryRef = useRef(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isFetchingGPS, setIsFetchingGPS] = useState(false);
+  const [isTimemarkApplied, setIsTimemarkApplied] = useState(false);
+  
+  // State untuk menyimpan data gambar polos DENGAN lokasi, sebagai base untuk Timemark nanti
+  const [originalGeoImage, setOriginalGeoImage] = useState(null); 
 
-const processPhoto = (file, isCamera) => {
-if (!file) return;
-setIsProcessing(true);
-const reader = new FileReader();
-reader.readAsDataURL(file);
-reader.onload = e => {
-const img = new Image(); img.src = e.target.result;
-img.onload = () => {
-    const canvas = document.createElement('canvas'); 
-    const MAX = 800; 
-    let w = img.width, h = img.height;
-    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, w, h);
+  const borderClass = value ? 'border-primary/40 bg-green-50/10 border-solid' : (required ? 'border-orange-300 bg-orange-50/20 border-dashed' : 'border-primary/30 border-dashed bg-[#FAFAFA]');
+  const fileInputRef = useRef(null);
+  const fileGalleryRef = useRef(null);
 
-    if (isCamera) {
-        const doWatermark = (lat, lng, address) => {
-            const timeStr = new Date().toLocaleString('id-ID');
-            const addrStr = address ? address.substring(0, 60) + (address.length > 60 ? '...' : '') : 'Lokasi tidak diketahui';
-            const coordStr = (lat && lng) ? `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}` : 'GPS Tdk Tersedia / Tdk Diizinkan';
-            
-            const barHeight = Math.max(70, canvas.height * 0.18); 
-            ctx.fillStyle = 'rgba(0,0,0,0.6)'; 
-            ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
-            
-            ctx.shadowColor = "black"; ctx.shadowBlur = 3; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
-            
-            ctx.fillStyle = '#FFD700'; 
-            ctx.font = `bold ${Math.max(12, barHeight * 0.22)}px sans-serif`;
-            ctx.fillText(`📅 ${timeStr}`, 12, canvas.height - (barHeight * 0.68));
-            
-            ctx.fillStyle = '#4ade80'; 
-            ctx.font = `bold ${Math.max(11, barHeight * 0.20)}px monospace`;
-            ctx.fillText(`📍 ${coordStr}`, 12, canvas.height - (barHeight * 0.38));
+  // 1. Fungsi Awal: Mengambil foto polos & Menangkap Geolocation seketika
+  const processPhoto = (file) => {
+    if (!file) return;
+    setIsProcessing(true);
+    setIsFetchingGPS(false);
+    setIsTimemarkApplied(false);
+    setOriginalGeoImage(null);
 
-            ctx.fillStyle = '#ffffff'; 
-            ctx.font = `bold ${Math.max(11, barHeight * 0.20)}px sans-serif`;
-            ctx.fillText(`🏠 ${addrStr}`, 12, canvas.height - (barHeight * 0.12));
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = e => {
+      const img = new Image(); img.src = e.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas'); 
+        const MAX = 800; 
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        
+        // Tampilkan foto polos sejenak agar UI terasa cepat
+        onChange(canvas.toDataURL('image/jpeg', 0.7));
 
-            const applyLogoAndSave = () => {
-                if (logoApp) {
-                    const logoImg = new Image();
-                    logoImg.crossOrigin = "anonymous";
-                    logoImg.src = logoApp;
-                    logoImg.onload = () => {
-                        const logoW = Math.max(50, canvas.width * 0.15);
-                        const logoH = logoW * (logoImg.height / logoImg.width);
-                        ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 5;
-                        ctx.drawImage(logoImg, canvas.width - logoW - 15, 15, logoW, logoH);
-                        onChange(canvas.toDataURL('image/jpeg', 0.7));
-                        setIsProcessing(false);
-                    };
-                    logoImg.onerror = () => {
-                        onChange(canvas.toDataURL('image/jpeg', 0.7));
-                        setIsProcessing(false);
-                    }
-                } else {
-                    onChange(canvas.toDataURL('image/jpeg', 0.7));
-                    setIsProcessing(false);
-                }
-            };
-            applyLogoAndSave();
-        };
-
+        // Mencari GPS seketika di latar belakang
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                async pos => {
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
-                        const data = await res.json();
-                        const addr = data.display_name;
-                        doWatermark(lat, lng, addr);
-                    } catch(e) {
-                        doWatermark(lat, lng, null);
-                    }
-                },
-                err => doWatermark(null, null, null), 
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-            );
+          setIsFetchingGPS(true);
+          navigator.geolocation.getCurrentPosition(
+              async pos => {
+                  const lat = pos.coords.latitude;
+                  const lng = pos.coords.longitude;
+                  try {
+                      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+                      const data = await res.json();
+                      
+                      // Tempelkan Mark Lokasi (Geo) seketika
+                      applyGeoWatermark(canvas, lat, lng, data.display_name, (finalGeoImage) => {
+                          setOriginalGeoImage(finalGeoImage); // Simpan sebagai base untuk time watermark
+                          onChange(finalGeoImage); // Update form dengan foto berlokasi
+                          setIsFetchingGPS(false);
+                          setIsProcessing(false);
+                      });
+                  } catch(e) {
+                      setOriginalGeoImage(canvas.toDataURL('image/jpeg', 0.7));
+                      setIsFetchingGPS(false);
+                      setIsProcessing(false);
+                  }
+              },
+              err => {
+                  setOriginalGeoImage(canvas.toDataURL('image/jpeg', 0.7));
+                  setIsFetchingGPS(false);
+                  setIsProcessing(false);
+              }, 
+              { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+          );
         } else {
-            doWatermark(null, null, null);
+          setOriginalGeoImage(canvas.toDataURL('image/jpeg', 0.7));
+          setIsProcessing(false);
+        }
+      };
+    };
+  };
+
+  // Helper untuk menempelkan mark Geolocation saja (Warna Hijau)
+  const applyGeoWatermark = (originalCanvas, lat, lng, address, callback) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = originalCanvas.width;
+    canvas.height = originalCanvas.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(originalCanvas, 0, 0);
+
+    const addrStr = address ? address.substring(0, 60) + (address.length > 60 ? '...' : '') : 'Lokasi tidak diketahui';
+    const coordStr = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+    
+    const barHeight = Math.max(70, canvas.height * 0.18); 
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; 
+    ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+    
+    ctx.shadowColor = "black"; ctx.shadowBlur = 3; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+    
+    // Warna Hijau Cerah (#4ade80) untuk Lokasi
+    ctx.fillStyle = '#4ade80'; 
+    ctx.font = `bold ${Math.max(11, barHeight * 0.20)}px monospace`;
+    ctx.fillText(`📍 ${coordStr}`, 12, canvas.height - (barHeight * 0.38));
+
+    ctx.fillStyle = '#ffffff'; 
+    ctx.font = `bold ${Math.max(11, barHeight * 0.20)}px sans-serif`;
+    ctx.fillText(`🏠 ${addrStr}`, 12, canvas.height - (barHeight * 0.12));
+
+    callback(canvas.toDataURL('image/jpeg', 0.7));
+  };
+
+  // 2. Fungsi Tombol: Menambahkan Timemark menggunakan waktu detil saat tombol diklik
+  const applyTimemark = () => {
+    if (!originalGeoImage) return;
+    setIsProcessing(true);
+    const img = new Image();
+    img.src = originalGeoImage;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      // Tangkap Waktu Detil Detik Tombol Diklik!
+      const currentTimeStr = new Date().toLocaleString('id-ID');
+
+      // Tempelkan Mark Timemark (Warna Kuning) di atas mark Lokasi
+      applyTimeWatermark(canvas, currentTimeStr, (finalImage) => {
+          onChange(finalImage); // Update form dengan foto finalized
+          setIsTimemarkApplied(true);
+          setIsProcessing(false);
+      });
+    };
+  };
+
+  // Helper untuk menempelkan mark Timemark saja (Warna Kuning) di atas mark Geo
+  const applyTimeWatermark = (originalCanvas, timeStr, callback) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = originalCanvas.width;
+    canvas.height = originalCanvas.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(originalCanvas, 0, 0);
+
+    const barHeight = Math.max(70, canvas.height * 0.18);
+    // Kita menimpa area bar yang sama atau di atasnya. Disini kita gunakan area yang sama tapi sedikit lebih tinggi.
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; 
+    ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+
+    ctx.shadowColor = "black"; ctx.shadowBlur = 3; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+
+    // Warna Kuning Cerah (#FFD700) untuk Waktu
+    ctx.fillStyle = '#FFD700'; 
+    ctx.font = `bold ${Math.max(12, barHeight * 0.22)}px sans-serif`;
+    ctx.fillText(`📅 ${timeStr}`, 12, canvas.height - (barHeight * 0.68));
+
+    // Logo duduk paling atas
+    if (logoApp) {
+        const logoImg = new Image();
+        logoImg.crossOrigin = "anonymous";
+        logoImg.src = logoApp;
+        logoImg.onload = () => {
+            const logoW = Math.max(50, canvas.width * 0.15);
+            const logoH = logoW * (logoImg.height / logoImg.width);
+            ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 5;
+            ctx.drawImage(logoImg, canvas.width - logoW - 15, 15, logoW, logoH);
+            callback(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        logoImg.onerror = () => {
+            callback(canvas.toDataURL('image/jpeg', 0.7));
         }
     } else {
-        onChange(canvas.toDataURL('image/jpeg', 0.7));
-        setIsProcessing(false);
+        callback(canvas.toDataURL('image/jpeg', 0.7));
     }
+  };
+
+  return (
+    <div className="flex flex-col items-center mb-4">
+      <p className="text-[10px] font-semibold text-gray-500 mb-1.5 text-center flex gap-1 justify-center tracking-wide">{label} {required && <span className="text-red-500">*</span>}</p>
+      <div className={`w-full rounded border flex flex-col items-center justify-center overflow-hidden relative shadow-sm transition-colors hover:bg-white ${borderClass} p-3`}>
+        
+        {isProcessing ? (
+          <div className="flex flex-col items-center py-6"><Icon name="loader" size={24} className="animate-spin text-primary mb-2" /><span className="text-[10px] text-primary font-bold">{isFetchingGPS ? 'Mencari GPS...' : 'Memproses Gambar...'}</span></div>
+        ) : value ? (
+          <div className="w-full relative flex flex-col items-center">
+              <img src={value} alt={label} className="w-full h-32 object-contain rounded" />
+              
+              <div className="absolute top-2 right-2 flex gap-1">
+                  <button onClick={() => fileInputRef.current.click()} className="p-1.5 bg-white/80 backdrop-blur rounded shadow hover:bg-white text-primary"><Icon name="camera" size={14}/></button>
+                  <button onClick={() => { onChange(''); setOriginalGeoImage(null); setIsTimemarkApplied(false); }} className="p-1.5 bg-white/80 backdrop-blur rounded shadow hover:bg-white text-red-500"><Icon name="trash-2" size={14}/></button>
+              </div>
+              
+              {/* Tombol Beri Timemark muncul jika foto berlokasi sudah ada, dan timemark belum ditempel */}
+              {value && originalGeoImage && !isTimemarkApplied && (
+                <button onClick={applyTimemark} className="mt-3 w-full py-2 bg-secondary text-primary font-bold rounded flex items-center justify-center gap-1.5 hover:bg-green-100 transition-colors shadow-sm active:scale-[0.98]">
+                    <Icon name="clock" size={14} /> Beri Timemark Sekarang (Opsional)
+                </button>
+              )}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-3 w-full py-2">
+              <div className="flex w-full gap-2">
+                  <button onClick={() => fileInputRef.current.click()} className="flex-1 flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-primary/50 transition-colors">
+                      <Icon name="camera" size={20} className={required ? "text-orange-400 mb-1" : "text-primary/70 mb-1"} />
+                      <span className="text-[9px] font-bold text-gray-600 uppercase">Kamera Langsung</span>
+                  </button>
+                  <button onClick={() => fileGalleryRef.current.click()} className="flex-1 flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-blue-300 transition-colors">
+                      <Icon name="image" size={20} className="text-blue-400 mb-1" />
+                      <span className="text-[9px] font-bold text-gray-600 uppercase">Ambil Galeri</span>
+                  </button>
+              </div>
+          </div>
+        )}
+        
+        <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0], true)} disabled={isProcessing} />
+        <input ref={fileGalleryRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0], false)} disabled={isProcessing} />
+      
+      </div>
+    </div>
+  );
 };
 };
 };
