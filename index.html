@@ -1037,12 +1037,8 @@ const PhotoInput = ({ label, value, onChange, required, logoApp }) => {
     ctx.drawImage(originalCanvas, 0, 0);
 
     const barHeight = Math.max(70, canvas.height * 0.18);
-    // Kita menimpa area bar yang sama atau di atasnya. Disini kita gunakan area yang sama tapi sedikit lebih tinggi.
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; 
-    ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
-
     ctx.shadowColor = "black"; ctx.shadowBlur = 3; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
-
+    
     // Warna Kuning Cerah (#FFD700) untuk Waktu
     ctx.fillStyle = '#FFD700'; 
     ctx.font = `bold ${Math.max(12, barHeight * 0.22)}px sans-serif`;
@@ -1074,20 +1070,17 @@ const PhotoInput = ({ label, value, onChange, required, logoApp }) => {
       <div className={`w-full rounded border flex flex-col items-center justify-center overflow-hidden relative shadow-sm transition-colors hover:bg-white ${borderClass} p-3`}>
         
         {isProcessing ? (
-          <div className="flex flex-col items-center py-6"><Icon name="loader" size={24} className="animate-spin text-primary mb-2" /><span className="text-[10px] text-primary font-bold">{isFetchingGPS ? 'Mencari GPS...' : 'Memproses Gambar...'}</span></div>
+          <div className="flex flex-col items-center py-6"><Icon name="loader" size={24} className="animate-spin text-primary mb-2" /><span className="text-[10px] text-primary font-bold">{isFetchingGPS ? 'Mencari Lokasi GPS...' : 'Memproses Gambar...'}</span></div>
         ) : value ? (
           <div className="w-full relative flex flex-col items-center">
               <img src={value} alt={label} className="w-full h-32 object-contain rounded" />
-              
               <div className="absolute top-2 right-2 flex gap-1">
                   <button onClick={() => fileInputRef.current.click()} className="p-1.5 bg-white/80 backdrop-blur rounded shadow hover:bg-white text-primary"><Icon name="camera" size={14}/></button>
                   <button onClick={() => { onChange(''); setOriginalGeoImage(null); setIsTimemarkApplied(false); }} className="p-1.5 bg-white/80 backdrop-blur rounded shadow hover:bg-white text-red-500"><Icon name="trash-2" size={14}/></button>
               </div>
-              
-              {/* Tombol Beri Timemark muncul jika foto berlokasi sudah ada, dan timemark belum ditempel */}
               {value && originalGeoImage && !isTimemarkApplied && (
                 <button onClick={applyTimemark} className="mt-3 w-full py-2 bg-secondary text-primary font-bold rounded flex items-center justify-center gap-1.5 hover:bg-green-100 transition-colors shadow-sm active:scale-[0.98]">
-                    <Icon name="clock" size={14} /> Beri Timemark Sekarang (Opsional)
+                    <Icon name="clock" size={14} /> Beri Timemark Sekarang
                 </button>
               )}
           </div>
@@ -1096,26 +1089,22 @@ const PhotoInput = ({ label, value, onChange, required, logoApp }) => {
               <div className="flex w-full gap-2">
                   <button onClick={() => fileInputRef.current.click()} className="flex-1 flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-primary/50 transition-colors">
                       <Icon name="camera" size={20} className={required ? "text-orange-400 mb-1" : "text-primary/70 mb-1"} />
-                      <span className="text-[9px] font-bold text-gray-600 uppercase">Kamera Langsung</span>
+                      <span className="text-[9px] font-bold text-gray-600 uppercase">Kamera</span>
                   </button>
                   <button onClick={() => fileGalleryRef.current.click()} className="flex-1 flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-blue-300 transition-colors">
                       <Icon name="image" size={20} className="text-blue-400 mb-1" />
-                      <span className="text-[9px] font-bold text-gray-600 uppercase">Ambil Galeri</span>
+                      <span className="text-[9px] font-bold text-gray-600 uppercase">Galeri</span>
                   </button>
               </div>
           </div>
         )}
-        
-        <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0], true)} disabled={isProcessing} />
-        <input ref={fileGalleryRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0], false)} disabled={isProcessing} />
-      
+        <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0])} disabled={isProcessing} />
+        <input ref={fileGalleryRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0])} disabled={isProcessing} />
       </div>
     </div>
   );
 };
-};
-};
-
+    
 // --- MAIN PAGES ---
 const FormPage = ({ formType, onBack, initialDraftId = null, initialHistoryId = null, dropdownData = {}, onSubmitSuccess, logoApp }) => {
 const [formData, setFormData] = useState({});
