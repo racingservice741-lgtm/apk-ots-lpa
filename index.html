@@ -1116,41 +1116,6 @@ const PhotoInput = ({ label, value, onChange, required, logoApp }) => {
 };
 };
 
-return (
-<div className="flex flex-col items-center mb-4">
-<p className="text-[10px] font-semibold text-gray-500 mb-1.5 text-center flex gap-1 justify-center tracking-wide">{label} {required && <span className="text-red-500">*</span>}</p>
-<div className={`w-full rounded border flex flex-col items-center justify-center overflow-hidden relative shadow-sm transition-colors hover:bg-white ${borderClass} p-3`}>
-{isProcessing ? (
-<div className="flex flex-col items-center py-6"><Icon name="loader" size={24} className="animate-spin text-primary mb-2" /><span className="text-[10px] text-primary font-bold">Membaca GPS & Memproses...</span></div>
-) : value ? (
-<div className="w-full relative">
-    <img src={value} alt={label} className="w-full h-32 object-contain rounded" />
-    <div className="absolute top-2 right-2 flex gap-1">
-        <button onClick={() => fileInputRef.current.click()} className="p-1.5 bg-white/80 backdrop-blur rounded shadow hover:bg-white text-primary"><Icon name="camera" size={14}/></button>
-        <button onClick={() => onChange('')} className="p-1.5 bg-white/80 backdrop-blur rounded shadow hover:bg-white text-red-500"><Icon name="trash-2" size={14}/></button>
-    </div>
-</div>
-) : (
-<div className="flex flex-col items-center gap-3 w-full py-2">
-    <div className="flex w-full gap-2">
-        <button onClick={() => fileInputRef.current.click()} className="flex-1 flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-primary/50 transition-colors">
-            <Icon name="camera" size={20} className={required ? "text-orange-400 mb-1" : "text-primary/70 mb-1"} />
-            <span className="text-[9px] font-bold text-gray-600 uppercase">Kamera (Watermark)</span>
-        </button>
-        <button onClick={() => fileGalleryRef.current.click()} className="flex-1 flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-blue-300 transition-colors">
-            <Icon name="image" size={20} className="text-blue-400 mb-1" />
-            <span className="text-[9px] font-bold text-gray-600 uppercase">Galeri (Polos)</span>
-        </button>
-    </div>
-</div>
-)}
-<input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0], true)} disabled={isProcessing} />
-<input ref={fileGalleryRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files && e.target.files[0] && processPhoto(e.target.files[0], false)} disabled={isProcessing} />
-</div>
-</div>
-);
-};
-
 // --- MAIN PAGES ---
 const FormPage = ({ formType, onBack, initialDraftId = null, initialHistoryId = null, dropdownData = {}, onSubmitSuccess, logoApp }) => {
 const [formData, setFormData] = useState({});
